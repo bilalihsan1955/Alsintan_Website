@@ -34,11 +34,18 @@
                     @endif
                 </div>
             </div>
-            @if($showNewTab)
-                <a href="{{ url()->full() }}{{ $newTabAnchor }}" target="_blank" rel="noopener noreferrer"
-                    class="inline-flex h-8 shrink-0 items-center justify-center self-start rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 sm:self-center">
-                    Buka di halaman baru
-                </a>
+            @if(($headerActions ?? null) || $showNewTab)
+                <div class="flex shrink-0 flex-wrap items-center justify-end gap-2 self-start sm:self-center">
+                    @if($headerActions ?? null)
+                        {{ $headerActions }}
+                    @endif
+                    @if($showNewTab)
+                        <a href="{{ url()->full() }}{{ $newTabAnchor }}" target="_blank" rel="noopener noreferrer"
+                            class="inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
+                            Buka di halaman baru
+                        </a>
+                    @endif
+                </div>
             @endif
         </div>
         @if($toolbar ?? null)

@@ -47,7 +47,7 @@
     }
     .als-nav-link.is-active { color: rgb(6 95 70); }
 </style>
-<nav class="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur-sm" aria-label="Navigasi utama">
+<nav class="fixed left-0 right-0 top-0 z-50 border-b border-slate-200/80 bg-white/95 shadow-sm backdrop-blur-md" aria-label="Navigasi utama">
     <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
         <a href="{{ route('dashboard') }}" class="flex items-center gap-2 text-lg font-bold tracking-tight text-emerald-900">
             <span class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-sm text-white">A</span>
@@ -61,3 +61,5 @@
         </div>
     </div>
 </nav>
+{{-- Mengisi ruang agar konten tidak tertutup nav fixed --}}
+<div class="pointer-events-none h-16 w-full shrink-0" aria-hidden="true"></div>

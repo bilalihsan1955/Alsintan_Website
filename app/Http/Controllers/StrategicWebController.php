@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AnomalyEvent;
 use App\Models\GeofenceEvent;
 use App\Models\GeofenceZone;
+use App\Models\Group;
 use App\Models\GroupPerformanceScore;
 use App\Models\MaintenancePlan;
 use App\Models\MaintenanceRecord;
@@ -21,6 +22,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 
 class StrategicWebController extends Controller
 {
@@ -72,6 +74,7 @@ class StrategicWebController extends Controller
         $latestPositions = $this->fleetMapPositions();
         /** Sama dengan dashboard: urutan kronologis, maks. 800 titik GPS per alat (lihat DashboardController::loadTractorDashboard). */
         $routeHistoryByTractor = $this->latestRouteHistoryByTractor($latestPositions->pluck('tractor_id')->unique()->values()->all());
+        $fuelFlowChart = $this->fuelFlowChartDatasets($from, $to);
 
         return view('strategic.index', [
             'from' => $from,
@@ -79,6 +82,7 @@ class StrategicWebController extends Controller
             'kpi' => $kpi,
             'coverageSeries' => $coverage,
             'fuelSeries' => $fuel,
+            'fuelFlowChart' => $fuelFlowChart,
             'geofenceAlerts' => $geofenceAlerts,
             'groupScores' => $groupScores,
             'anomalies' => $anomalies,
@@ -90,10 +94,245 @@ class StrategicWebController extends Controller
             'latestPositions' => $latestPositions,
             'routeHistoryByTractor' => $routeHistoryByTractor,
             'tractors' => $tractors,
+            'groups' => Group::query()->orderBy('name')->get(['id', 'name', 'village']),
             'zoneTractorFeatureReady' => $hasZoneTractorPivot,
             'periodLabel' => $request->query('gp_period')
                 ?: now()->format('Y').'-Q'.(int) ceil(((int) now()->format('n')) / 3),
         ]);
+    }
+
+    private function redirectStrategic(Request $request): \Illuminate\Http\RedirectResponse
+    {
+        return redirect()->route('strategic', $request->query());
+    }
+
+    public function storeGroupScore(Request $request)
+    {
+        $data = $request->validate([
+            'group_id' => [
+                'required',
+                'exists:groups,id',
+                Rule::unique('group_performance_scores', 'group_id')->where(fn ($q) => $q->where('period', $request->input('period'))),
+            ],
+            'period' => ['required', 'string', 'max:32'],
+            'activity_score' => ['required', 'numeric'],
+            'maintenance_score' => ['required', 'numeric'],
+            'total_score' => ['required', 'numeric'],
+            'grade' => ['nullable', 'string', 'size:1', Rule::in(['A', 'B', 'C', 'D', 'a', 'b', 'c', 'd'])],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $data['grade'] = $data['grade'] !== null && $data['grade'] !== '' ? strtoupper($data['grade']) : null;
+        GroupPerformanceScore::query()->create($data);
+
+        return $this->redirectStrategic($request)->with('ok', 'Rapor kinerja kelompok tani berhasil ditambahkan.');
+    }
+
+    public function updateGroupScore(GroupPerformanceScore $groupPerformanceScore, Request $request)
+    {
+        $data = $request->validate([
+            'group_id' => [
+                'required',
+                'exists:groups,id',
+                Rule::unique('group_performance_scores', 'group_id')
+                    ->where(fn ($q) => $q->where('period', $request->input('period')))
+                    ->ignore($groupPerformanceScore->id),
+            ],
+            'period' => ['required', 'string', 'max:32'],
+            'activity_score' => ['required', 'numeric'],
+            'maintenance_score' => ['required', 'numeric'],
+            'total_score' => ['required', 'numeric'],
+            'grade' => ['nullable', 'string', 'size:1', Rule::in(['A', 'B', 'C', 'D', 'a', 'b', 'c', 'd'])],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $data['grade'] = $data['grade'] !== null && $data['grade'] !== '' ? strtoupper($data['grade']) : null;
+        $groupPerformanceScore->update($data);
+
+        return $this->redirectStrategic($request)->with('ok', 'Rapor kinerja kelompok tani diperbarui.');
+    }
+
+    public function deleteGroupScore(GroupPerformanceScore $groupPerformanceScore, Request $request)
+    {
+        $groupPerformanceScore->delete();
+
+        return $this->redirectStrategic($request)->with('ok', 'Rapor kinerja kelompok tani dihapus.');
+    }
+
+    public function storeAnomaly(Request $request)
+    {
+        $data = $request->validate([
+            'detected_at' => ['required', 'date'],
+            'tractor_id' => ['required', 'string', 'exists:tractors,id'],
+            'anomaly_type' => ['required', 'string', 'max:120'],
+            'severity' => ['required', 'string', Rule::in(['HIGH', 'MEDIUM', 'LOW', 'high', 'medium', 'low'])],
+            'description' => ['nullable', 'string', 'max:5000'],
+            'status' => ['required', 'string', Rule::in(['OPEN', 'RESOLVED', 'open', 'resolved'])],
+            'resolved_at' => ['nullable', 'date'],
+            'resolved_note' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $data['severity'] = strtoupper($data['severity']);
+        $data['status'] = strtoupper($data['status']);
+        AnomalyEvent::query()->create($data);
+
+        return $this->redirectStrategic($request)->with('ok', 'Data anomali berhasil ditambahkan.');
+    }
+
+    public function updateAnomaly(AnomalyEvent $anomalyEvent, Request $request)
+    {
+        $data = $request->validate([
+            'detected_at' => ['required', 'date'],
+            'tractor_id' => ['required', 'string', 'exists:tractors,id'],
+            'anomaly_type' => ['required', 'string', 'max:120'],
+            'severity' => ['required', 'string', Rule::in(['HIGH', 'MEDIUM', 'LOW', 'high', 'medium', 'low'])],
+            'description' => ['nullable', 'string', 'max:5000'],
+            'status' => ['required', 'string', Rule::in(['OPEN', 'RESOLVED', 'open', 'resolved'])],
+            'resolved_at' => ['nullable', 'date'],
+            'resolved_note' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $data['severity'] = strtoupper($data['severity']);
+        $data['status'] = strtoupper($data['status']);
+        $anomalyEvent->update($data);
+
+        return $this->redirectStrategic($request)->with('ok', 'Data anomali diperbarui.');
+    }
+
+    public function deleteAnomaly(AnomalyEvent $anomalyEvent, Request $request)
+    {
+        $anomalyEvent->delete();
+
+        return $this->redirectStrategic($request)->with('ok', 'Data anomali dihapus.');
+    }
+
+    public function storeUtilizationDaily(Request $request)
+    {
+        $data = $request->validate([
+            'tractor_id' => [
+                'required',
+                'string',
+                'exists:tractors,id',
+                Rule::unique('utilization_daily', 'tractor_id')->where(fn ($q) => $q->where('date', $request->input('date'))),
+            ],
+            'date' => ['required', 'date'],
+            'active_days_rolling' => ['required', 'integer', 'min:0'],
+            'estimated_hours' => ['required', 'numeric', 'min:0'],
+            'utilization_pct' => ['required', 'numeric', 'min:0', 'max:100'],
+            'utilization_status' => ['nullable', 'string', 'max:32'],
+        ]);
+        if (! empty($data['utilization_status'])) {
+            $data['utilization_status'] = strtoupper($data['utilization_status']);
+        }
+        UtilizationDaily::query()->create($data);
+
+        return $this->redirectStrategic($request)->with('ok', 'Data utilisasi berhasil ditambahkan.');
+    }
+
+    public function updateUtilizationDaily(UtilizationDaily $utilizationDaily, Request $request)
+    {
+        $data = $request->validate([
+            'tractor_id' => [
+                'required',
+                'string',
+                'exists:tractors,id',
+                Rule::unique('utilization_daily', 'tractor_id')
+                    ->where(fn ($q) => $q->where('date', $request->input('date')))
+                    ->ignore($utilizationDaily->id),
+            ],
+            'date' => ['required', 'date'],
+            'active_days_rolling' => ['required', 'integer', 'min:0'],
+            'estimated_hours' => ['required', 'numeric', 'min:0'],
+            'utilization_pct' => ['required', 'numeric', 'min:0', 'max:100'],
+            'utilization_status' => ['nullable', 'string', 'max:32'],
+        ]);
+        if (! empty($data['utilization_status'])) {
+            $data['utilization_status'] = strtoupper($data['utilization_status']);
+        }
+        $utilizationDaily->update($data);
+
+        return $this->redirectStrategic($request)->with('ok', 'Data utilisasi diperbarui.');
+    }
+
+    public function deleteUtilizationDaily(UtilizationDaily $utilizationDaily, Request $request)
+    {
+        $utilizationDaily->delete();
+
+        return $this->redirectStrategic($request)->with('ok', 'Data utilisasi dihapus.');
+    }
+
+    public function storeMaintenancePlan(Request $request)
+    {
+        $data = $request->validate([
+            'tractor_id' => ['required', 'string', 'exists:tractors,id'],
+            'task_type' => ['required', 'string', 'max:120'],
+            'interval_hours' => ['nullable', 'numeric', 'min:0'],
+            'current_hours' => ['nullable', 'numeric', 'min:0'],
+            'due_hours' => ['nullable', 'numeric', 'min:0'],
+            'status' => ['required', 'string', Rule::in(['DONE', 'PENDING', 'OVERDUE', 'done', 'pending', 'overdue'])],
+        ]);
+        $data['status'] = strtoupper($data['status']);
+        MaintenancePlan::query()->create($data);
+
+        return $this->redirectStrategic($request)->with('ok', 'Rencana maintenance berhasil ditambahkan.');
+    }
+
+    public function updateMaintenancePlan(MaintenancePlan $maintenancePlan, Request $request)
+    {
+        $data = $request->validate([
+            'tractor_id' => ['required', 'string', 'exists:tractors,id'],
+            'task_type' => ['required', 'string', 'max:120'],
+            'interval_hours' => ['nullable', 'numeric', 'min:0'],
+            'current_hours' => ['nullable', 'numeric', 'min:0'],
+            'due_hours' => ['nullable', 'numeric', 'min:0'],
+            'status' => ['required', 'string', Rule::in(['DONE', 'PENDING', 'OVERDUE', 'done', 'pending', 'overdue'])],
+        ]);
+        $data['status'] = strtoupper($data['status']);
+        $maintenancePlan->update($data);
+
+        return $this->redirectStrategic($request)->with('ok', 'Rencana maintenance diperbarui.');
+    }
+
+    public function deleteMaintenancePlan(MaintenancePlan $maintenancePlan, Request $request)
+    {
+        $maintenancePlan->delete();
+
+        return $this->redirectStrategic($request)->with('ok', 'Rencana maintenance dihapus.');
+    }
+
+    public function storeMaintenanceRecord(Request $request)
+    {
+        $data = $request->validate([
+            'tractor_id' => ['required', 'string', 'exists:tractors,id'],
+            'record_date' => ['required', 'date'],
+            'record_type' => ['required', 'string', 'max:64'],
+            'description' => ['nullable', 'string', 'max:5000'],
+            'cost' => ['required', 'numeric', 'min:0'],
+            'technician' => ['nullable', 'string', 'max:120'],
+            'workshop' => ['nullable', 'string', 'max:120'],
+        ]);
+        MaintenanceRecord::query()->create($data);
+
+        return $this->redirectStrategic($request)->with('ok', 'Riwayat kesehatan alat berhasil ditambahkan.');
+    }
+
+    public function updateMaintenanceRecord(MaintenanceRecord $maintenanceRecord, Request $request)
+    {
+        $data = $request->validate([
+            'tractor_id' => ['required', 'string', 'exists:tractors,id'],
+            'record_date' => ['required', 'date'],
+            'record_type' => ['required', 'string', 'max:64'],
+            'description' => ['nullable', 'string', 'max:5000'],
+            'cost' => ['required', 'numeric', 'min:0'],
+            'technician' => ['nullable', 'string', 'max:120'],
+            'workshop' => ['nullable', 'string', 'max:120'],
+        ]);
+        $maintenanceRecord->update($data);
+
+        return $this->redirectStrategic($request)->with('ok', 'Riwayat kesehatan alat diperbarui.');
+    }
+
+    public function deleteMaintenanceRecord(MaintenanceRecord $maintenanceRecord, Request $request)
+    {
+        $maintenanceRecord->delete();
+
+        return $this->redirectStrategic($request)->with('ok', 'Riwayat kesehatan alat dihapus.');
     }
 
     public function storeZone(Request $request)
@@ -284,6 +523,102 @@ class StrategicWebController extends Controller
         }
 
         return $out;
+    }
+
+    /**
+     * Nilai Flow BBM sama seperti tabel riwayat di Home: sensor.flow dari raw_payload, fallback ke kolom fuel_lph.
+     *
+     * @see resources/views/dashboard/index.blade.php ($rFlow = $rs['flow'] ?? $row->fuel_lph)
+     */
+    private function resolveTelemetryFlowLph(TelemetryLog $log): ?float
+    {
+        $payload = is_array($log->raw_payload)
+            ? $log->raw_payload
+            : (json_decode((string) ($log->raw_payload ?? ''), true) ?: []);
+        $sensor = $payload['sensor'] ?? [];
+        if (is_array($sensor) && array_key_exists('flow', $sensor) && $sensor['flow'] !== null && $sensor['flow'] !== '') {
+            if (is_numeric($sensor['flow'])) {
+                return (float) $sensor['flow'];
+            }
+        }
+        if ($log->fuel_lph !== null) {
+            return (float) $log->fuel_lph;
+        }
+
+        return null;
+    }
+
+    /**
+     * Satu grafik gabungan: beberapa garis (satu per alat), sumber nilai diselaraskan dengan kolom Flow BBM di dashboard Home.
+     *
+     * @return array{datasets: list<array{label: string, borderColor: string, backgroundColor: string, data: list<array{x: string, y: float}>}>}
+     */
+    private function fuelFlowChartDatasets(Carbon $from, Carbon $to): array
+    {
+        $maxPointsPerTractor = 450;
+        $palette = [
+            ['rgb(217, 119, 6)', 'rgba(217, 119, 6, 0)'],
+            ['rgb(5, 150, 105)', 'rgba(5, 150, 105, 0)'],
+            ['rgb(14, 165, 233)', 'rgba(14, 165, 233, 0)'],
+            ['rgb(124, 58, 237)', 'rgba(124, 58, 237, 0)'],
+            ['rgb(219, 39, 119)', 'rgba(219, 39, 119, 0)'],
+            ['rgb(234, 88, 12)', 'rgba(234, 88, 12, 0)'],
+        ];
+
+        $datasets = [];
+        $tractors = Tractor::query()->orderBy('id')->get(['id', 'name']);
+
+        foreach ($tractors as $idx => $t) {
+            $tid = (string) $t->id;
+            $logs = TelemetryLog::query()
+                ->where('tractor_id', $tid)
+                ->whereBetween('ts', [$from, $to])
+                ->orderBy('ts')
+                ->limit(8000)
+                ->get(['ts', 'fuel_lph', 'raw_payload']);
+
+            $data = [];
+            foreach ($logs as $log) {
+                $lph = $this->resolveTelemetryFlowLph($log);
+                if ($lph === null) {
+                    continue;
+                }
+                $data[] = [
+                    'x' => $log->ts->toIso8601String(),
+                    'y' => round($lph, 4),
+                ];
+            }
+
+            $n = count($data);
+            if ($n === 0) {
+                continue;
+            }
+            $step = $n > $maxPointsPerTractor ? (int) ceil($n / $maxPointsPerTractor) : 1;
+            if ($step > 1) {
+                $sampled = [];
+                foreach ($data as $i => $pt) {
+                    if ($i % $step === 0) {
+                        $sampled[] = $pt;
+                    }
+                }
+                $data = $sampled;
+            }
+
+            $label = $tid;
+            if ($t->name) {
+                $label .= ' — '.$t->name;
+            }
+
+            $c = $palette[$idx % count($palette)];
+            $datasets[] = [
+                'label' => $label,
+                'borderColor' => $c[0],
+                'backgroundColor' => $c[1],
+                'data' => $data,
+            ];
+        }
+
+        return ['datasets' => $datasets];
     }
 
     private function geofenceAlerts(Request $request, Carbon $from, Carbon $to): LengthAwarePaginator

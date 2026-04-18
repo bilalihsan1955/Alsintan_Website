@@ -23,10 +23,12 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
     <style>
         html, body { height: 100%; }
-        #map { min-height: 280px; }
+        #map { min-height: 280px; position: relative; z-index: 0; isolation: isolate; }
         @media (min-width: 768px) {
             #map { min-height: 420px; }
         }
+        /* Kontrol Leaflet di bawah agar tidak tertutup navbar fixed */
+        #map .leaflet-bottom .leaflet-control { margin-bottom: 0.5rem; }
         @keyframes als-pulse {
             50% { opacity: 0.5; }
         }
@@ -307,11 +309,21 @@
                 }
 
                 function initMap(track) {
-                    map = L.map('map', { scrollWheelZoom: true });
-                    L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
-                        maxZoom: 22,
-                        attribution: '&copy; Google'
-                    }).addTo(map);
+                    map = L.map('map', { scrollWheelZoom: true, zoomControl: false });
+                    (function () {
+                        var osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                            maxZoom: 19,
+                            subdomains: 'abc',
+                            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" rel="noreferrer">OpenStreetMap</a>'
+                        });
+                        var sat = L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+                            maxZoom: 22,
+                            attribution: '&copy; Google'
+                        });
+                        sat.addTo(map);
+                        L.control.layers({ Satelit: sat, Peta: osm }, null, { position: 'bottomright' }).addTo(map);
+                        L.control.zoom({ position: 'bottomleft' }).addTo(map);
+                    })();
                     updateTrack(track);
                 }
 
