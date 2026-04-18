@@ -5,6 +5,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\StrategicWebController;
 use App\Http\Controllers\TractorManagementController;
+use App\Http\Controllers\UserManagementController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -49,6 +50,13 @@ Route::middleware('auth')->group(function () {
 |--------------------------------------------------------------------------
 */
 Route::middleware(['auth', 'admin'])->group(function () {
+    /* Manajemen akun pengguna (web). */
+    Route::get('/pengguna', [UserManagementController::class, 'index'])->name('admin.users.index');
+    Route::post('/pengguna', [UserManagementController::class, 'store'])->name('admin.users.store');
+    Route::get('/pengguna/{user}/edit', [UserManagementController::class, 'edit'])->name('admin.users.edit');
+    Route::patch('/pengguna/{user}', [UserManagementController::class, 'update'])->name('admin.users.update');
+    Route::delete('/pengguna/{user}', [UserManagementController::class, 'destroy'])->name('admin.users.destroy');
+
     /* Kelola master alat (edit). */
     Route::patch('/perangkat/{tractor}', [TractorManagementController::class, 'update'])->name('tractors.update');
 
