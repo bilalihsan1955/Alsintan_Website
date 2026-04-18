@@ -1,5 +1,7 @@
 @php
     $active = $active ?? 'dashboard';
+    $me = auth()->user();
+    $isAdmin = $me && ($me->role ?? 'operator') === 'admin';
 @endphp
 <style>
     .als-nav-track {
@@ -46,6 +48,21 @@
         transition: color 0.2s ease;
     }
     .als-nav-link.is-active { color: rgb(6 95 70); }
+    .als-nav-avatar {
+        display:inline-flex; align-items:center; gap:.5rem;
+        border-radius: 999px; padding: .25rem .75rem .25rem .25rem;
+        border:1px solid rgb(226 232 240); background:#fff;
+    }
+    .als-nav-avatar:hover { background: rgb(248 250 252); }
+    .als-nav-avatar .bubble {
+        width: 1.75rem; height: 1.75rem; border-radius:999px; background: rgb(16 185 129); color:#fff;
+        display:inline-flex; align-items:center; justify-content:center; font-size:.8rem; font-weight:700;
+        overflow:hidden;
+    }
+    .als-nav-avatar .bubble img { width:100%; height:100%; object-fit:cover; }
+    .als-nav-role { font-size:.65rem; font-weight:700; letter-spacing:.03em; padding:.05rem .35rem; border-radius:999px; }
+    .role-admin { background: rgb(219 234 254); color: rgb(30 64 175); }
+    .role-operator { background: rgb(220 252 231); color: rgb(22 101 52); }
 </style>
 <nav class="fixed left-0 right-0 top-0 z-50 border-b border-slate-200/80 bg-white/95 shadow-sm backdrop-blur-md" aria-label="Navigasi utama">
     <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
@@ -59,6 +76,20 @@
             <a href="{{ route('tractors.manage') }}" class="als-nav-link {{ $active === 'tractors' ? 'is-active' : 'text-slate-600' }}">Kelola perangkat</a>
             <a href="{{ route('strategic') }}" class="als-nav-link {{ $active === 'strategic' ? 'is-active' : 'text-slate-600' }}">Strategic</a>
         </div>
+
+        @if ($me)
+            <a href="{{ route('profile') }}" class="als-nav-avatar" title="Profil">
+                <span class="bubble">
+                    @if ($me->avatar_url)
+                        <img src="{{ $me->avatar_url }}" alt="">
+                    @else
+                        {{ \Illuminate\Support\Str::upper(\Illuminate\Support\Str::substr($me->name ?? '?', 0, 1)) }}
+                    @endif
+                </span>
+                <span class="hidden text-sm font-semibold text-slate-700 sm:inline">{{ \Illuminate\Support\Str::limit($me->name, 14) }}</span>
+                <span class="als-nav-role {{ $isAdmin ? 'role-admin' : 'role-operator' }}">{{ $isAdmin ? 'Admin' : 'Operator' }}</span>
+            </a>
+        @endif
     </div>
 </nav>
 {{-- Mengisi ruang agar konten tidak tertutup nav fixed --}}

@@ -18,7 +18,20 @@ class Tractor extends Model
         'plate_number',
         'device_uid',
         'status',
+        'api_token_hash',
+        'api_token_last_used_at',
     ];
+
+    protected $hidden = [
+        'api_token_hash',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'api_token_last_used_at' => 'datetime',
+        ];
+    }
 
     protected $appends = ['device_id'];
 

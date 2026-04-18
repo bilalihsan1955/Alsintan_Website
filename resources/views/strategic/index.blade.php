@@ -1,4 +1,7 @@
 @php
+    /** Role guard: hanya admin yang boleh lihat tombol tambah/edit/hapus CRUD. Operator = read-only. */
+    $isAdmin = auth()->check() && (auth()->user()->role ?? 'operator') === 'admin';
+
     $impact = $kpi['impact'] ?? [];
     $summaryText = $impact['summary_text'] ?? ($kpi['summary_text'] ?? 'Ringkasan dampak operasional Alsintan untuk periode terpilih.');
     $fuelSave = (float) ($impact['fuel_saving_pct'] ?? $kpi['fuel_saving_pct'] ?? 0);
@@ -310,9 +313,9 @@
 
         {{-- 4) BBM — laju aliran (fuel_lph), satu grafik semua alat --}}
         <section id="fuel-flow-section" class="mb-10">
-            <h2 class="als-section-title text-lg font-bold">BBM — laju aliran</h2>
+            <h2 class="als-section-title text-lg font-bold">Konsumsi BBM</h2>
             <p class="mt-1 max-w-3xl text-sm text-slate-600">
-                Nilai tiap titik sama dengan kolom <strong>Flow BBM</strong> di Home (<span class="font-mono text-xs">sensor.flow</span> pada payload, jika ada, lalu <span class="font-mono text-xs">fuel_lph</span>). Rentang waktu mengikuti tanggal di atas (bukan filter tabel riwayat di Home).
+                Pantau laju pemakaian BBM tiap alat dari waktu ke waktu untuk mengukur efisiensi dan mendeteksi pemborosan.
             </p>
             <p class="mt-1 text-xs text-slate-500">
                 {{ $from->timezone(config('app.timezone'))->format('d/m/Y H:i') }}
@@ -380,7 +383,9 @@
                         <p class="mt-0.5 text-xs text-slate-500">Polygon tidak valid = tidak digambar di peta. Kolom Alat = traktor yang dikaitkan (opsional). Klik baris untuk sorot di peta.</p>
                     </div>
                     <div class="flex shrink-0 flex-col gap-2 sm:items-end">
-                        <button type="button" id="als-zone-draw-work" class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1 sm:w-auto">+ Tambah area kerja</button>
+                        @if ($isAdmin)
+                            <button type="button" id="als-zone-draw-work" class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-1 sm:w-auto">+ Tambah area kerja</button>
+                        @endif
                     </div>
                 </div>
                 <div class="overflow-x-auto">
@@ -408,13 +413,19 @@
                                 <tr class="als-zone-table-row cursor-pointer hover:bg-slate-50/80" data-zone-id="{{ $zone->id }}" title="Klik baris untuk sorot di peta">
                                     <td class="px-4 py-2.5 font-medium text-slate-900">{{ $zone->name }}</td>
                                     <td class="px-4 py-2.5" onclick="event.stopPropagation();">
-                                        <form method="post" action="{{ $toggleUrl }}" class="inline-block">
-                                            @csrf
-                                            @method('PATCH')
-                                            <button type="submit" class="inline-flex min-w-[5.5rem] items-center justify-center rounded-full border px-2.5 py-1 text-[11px] font-semibold transition {{ $zone->is_active ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100' : 'border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200' }}" title="Ubah status aktif">
+                                        @if ($isAdmin)
+                                            <form method="post" action="{{ $toggleUrl }}" class="inline-block">
+                                                @csrf
+                                                @method('PATCH')
+                                                <button type="submit" class="inline-flex min-w-[5.5rem] items-center justify-center rounded-full border px-2.5 py-1 text-[11px] font-semibold transition {{ $zone->is_active ? 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100' : 'border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200' }}" title="Ubah status aktif">
+                                                    {{ $zone->is_active ? 'Aktif' : 'Nonaktif' }}
+                                                </button>
+                                            </form>
+                                        @else
+                                            <span class="inline-flex min-w-[5.5rem] items-center justify-center rounded-full border px-2.5 py-1 text-[11px] font-semibold {{ $zone->is_active ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-slate-100 text-slate-600' }}">
                                                 {{ $zone->is_active ? 'Aktif' : 'Nonaktif' }}
-                                            </button>
-                                        </form>
+                                            </span>
+                                        @endif
                                     </td>
                                     <td class="px-4 py-2.5 tabular-nums">{{ $zm['pts'] }}</td>
                                     <td class="max-w-[14rem] px-4 py-2.5 text-xs text-slate-700">
@@ -429,14 +440,18 @@
                                         @endif
                                     </td>
                                     <td class="px-4 py-2.5 text-right" onclick="event.stopPropagation();">
-                                        <div class="inline-flex flex-wrap items-center justify-end gap-1.5">
-                                            <button type="button" class="als-zone-btn-edit rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-100" data-zone-id="{{ $zone->id }}">Edit</button>
-                                            <form method="post" action="{{ $deleteUrl }}" class="als-zone-row-delete-form inline">
-                                                @csrf
-                                                @method('DELETE')
-                                                <button type="button" class="als-zone-row-delete-btn rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-100">Hapus</button>
-                                            </form>
-                                        </div>
+                                        @if ($isAdmin)
+                                            <div class="inline-flex flex-wrap items-center justify-end gap-1.5">
+                                                <button type="button" class="als-zone-btn-edit rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-100" data-zone-id="{{ $zone->id }}">Edit</button>
+                                                <form method="post" action="{{ $deleteUrl }}" class="als-zone-row-delete-form inline">
+                                                    @csrf
+                                                    @method('DELETE')
+                                                    <button type="button" class="als-zone-row-delete-btn rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-100">Hapus</button>
+                                                </form>
+                                            </div>
+                                        @else
+                                            <span class="text-xs text-slate-400">—</span>
+                                        @endif
                                     </td>
                                 </tr>
                             @empty
@@ -449,9 +464,16 @@
                 </div>
             </div>
 
-            <x-strategic.table-shell title="Geofence Alerts" subtitle="Keluar area kerja tercatat; masuk kembali tercatat. Di antara keduanya, lacak pergerakan lewat log telemetri / peta." icon="alert" fragment="gf-log-section" per-page-key="gf_per_page" :paginator="$geofenceAlerts" new-tab-anchor="#gf-log-section">
+            <x-strategic.table-shell title="Geofence Alerts" subtitle="Pantau alat saat keluar dan kembali ke area kerja. Dicatat otomatis." icon="alert" fragment="gf-log-section" per-page-key="gf_per_page" :paginator="$geofenceAlerts" new-tab-anchor="#gf-log-section">
                 <x-slot name="toolbar">
-                    <x-strategic.filter-toolbar :preserver-except="['gf_q', 'gf_type', 'gf_page']" :reset-keys="['gf_q', 'gf_type', 'gf_page', 'gf_per_page']" reset-fragment="gf-log-section">
+                    <x-strategic.filter-toolbar
+                        :preserver-except="['gf_q', 'gf_type', 'gf_page']"
+                        :reset-keys="['gf_q', 'gf_type', 'gf_page', 'gf_per_page']"
+                        reset-fragment="gf-log-section"
+                        :strategic-from="$from->toDateString()"
+                        :strategic-to="$to->toDateString()"
+                        :show-strategic-date-range="false"
+                    >
                         <input type="search" name="gf_q" value="{{ request('gf_q') }}" placeholder="Cari alat / pesan…" class="min-h-[38px] min-w-[7rem] max-w-full flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
                         <x-ui.custom-select name="gf_type" :options="['' => 'Semua tipe', 'ENTER' => 'ENTER', 'EXIT' => 'EXIT']" :selected="$gfTypeSel" class="w-[7.25rem] flex-shrink-0" />
                     </x-strategic.filter-toolbar>
@@ -487,10 +509,12 @@
         <section class="mb-10 space-y-8">
             <h2 class="als-section-title text-lg font-bold">Analisis Kinerja &amp; Anomali</h2>
 
-            <x-strategic.table-shell title="Rapor Kinerja Kelompok Tani (Gamification)" subtitle="Periode: {{ $periodLabel }}" icon="chart" fragment="strategic-gp-section" per-page-key="gp_per_page" :paginator="$groupScores">
-                <x-slot name="headerActions">
-                    <button type="button" class="strategic-crud-add inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100" data-strategic-kind="gp">+ Tambah</button>
-                </x-slot>
+            <x-strategic.table-shell title="Rapor Kinerja Kelompok Tani" subtitle="Peringkat kelompok dari keaktifan &amp; perawatan alat. Periode: {{ $periodLabel }}." icon="chart" fragment="strategic-gp-section" per-page-key="gp_per_page" :paginator="$groupScores">
+                @if ($isAdmin)
+                    <x-slot name="headerActions">
+                        <button type="button" class="strategic-crud-add inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100" data-strategic-kind="gp">+ Tambah</button>
+                    </x-slot>
+                @endif
                 <x-slot name="toolbar">
                     <x-strategic.filter-toolbar :preserver-except="['gp_q', 'gp_grade', 'gp_period', 'gp_page']" :reset-keys="['gp_q', 'gp_grade', 'gp_period', 'gp_page', 'gp_per_page']" reset-fragment="strategic-gp-section">
                         <input type="search" name="gp_q" value="{{ request('gp_q') }}" placeholder="Kelompok / catatan…" class="min-h-[38px] min-w-[7rem] max-w-full flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
@@ -538,14 +562,18 @@
                                 <td class="px-3 py-3"><x-strategic.badge :variant="$gradeVariant($g->grade)">{{ $g->grade }}</x-strategic.badge></td>
                                 <td class="max-w-xs truncate px-3 py-3 text-slate-600" title="{{ $g->notes }}">{{ $g->notes ?: '—' }}</td>
                                 <td class="px-3 py-3 text-right" onclick="event.stopPropagation();">
-                                    <div class="inline-flex flex-wrap items-center justify-end gap-1.5">
-                                        <button type="button" class="strategic-crud-edit rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-100">Edit</button>
-                                        <form method="post" action="{{ route('strategic.group-scores.delete', $g).$strategicSuffix }}" class="inline als-strategic-delete-form">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="button" class="als-strategic-delete-btn rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-100">Hapus</button>
-                                        </form>
-                                    </div>
+                                    @if ($isAdmin)
+                                        <div class="inline-flex flex-wrap items-center justify-end gap-1.5">
+                                            <button type="button" class="strategic-crud-edit rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-100">Edit</button>
+                                            <form method="post" action="{{ route('strategic.group-scores.delete', $g).$strategicSuffix }}" class="inline als-strategic-delete-form">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="button" class="als-strategic-delete-btn rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-100">Hapus</button>
+                                            </form>
+                                        </div>
+                                    @else
+                                        <span class="text-xs text-slate-400">—</span>
+                                    @endif
                                 </td>
                             </tr>
                         @empty
@@ -555,10 +583,12 @@
                 </table>
             </x-strategic.table-shell>
 
-            <x-strategic.table-shell title="Anomaly Detection System" subtitle="Insiden &amp; status penanganan" icon="alert" fragment="strategic-an-section" per-page-key="an_per_page" :paginator="$anomalies">
-                <x-slot name="headerActions">
-                    <button type="button" class="strategic-crud-add inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100" data-strategic-kind="an">+ Tambah</button>
-                </x-slot>
+            <x-strategic.table-shell title="Deteksi Anomali Alat" subtitle="Kejanggalan pada alat yang perlu segera ditindaklanjuti." icon="alert" fragment="strategic-an-section" per-page-key="an_per_page" :paginator="$anomalies">
+                @if ($isAdmin)
+                    <x-slot name="headerActions">
+                        <button type="button" class="strategic-crud-add inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100" data-strategic-kind="an">+ Tambah</button>
+                    </x-slot>
+                @endif
                 <x-slot name="toolbar">
                     <x-strategic.filter-toolbar :preserver-except="['an_q', 'an_status', 'an_severity', 'an_page']" :reset-keys="['an_q', 'an_status', 'an_severity', 'an_page', 'an_per_page']" reset-fragment="strategic-an-section">
                         <input type="search" name="an_q" value="{{ request('an_q') }}" placeholder="Cari…" class="min-h-[38px] min-w-[6.5rem] max-w-full flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
@@ -604,14 +634,18 @@
                                     <x-strategic.badge :variant="strtoupper((string) $a->status) === 'OPEN' ? 'st-open' : 'st-resolved'">{{ strtoupper($a->status) }}</x-strategic.badge>
                                 </td>
                                 <td class="px-4 py-3 text-right" onclick="event.stopPropagation();">
-                                    <div class="inline-flex flex-wrap items-center justify-end gap-1.5">
-                                        <button type="button" class="strategic-crud-edit rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-100">Edit</button>
-                                        <form method="post" action="{{ route('strategic.anomalies.delete', $a).$strategicSuffix }}" class="inline als-strategic-delete-form">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="button" class="als-strategic-delete-btn rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-100">Hapus</button>
-                                        </form>
-                                    </div>
+                                    @if ($isAdmin)
+                                        <div class="inline-flex flex-wrap items-center justify-end gap-1.5">
+                                            <button type="button" class="strategic-crud-edit rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-100">Edit</button>
+                                            <form method="post" action="{{ route('strategic.anomalies.delete', $a).$strategicSuffix }}" class="inline als-strategic-delete-form">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="button" class="als-strategic-delete-btn rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-100">Hapus</button>
+                                            </form>
+                                        </div>
+                                    @else
+                                        <span class="text-xs text-slate-400">—</span>
+                                    @endif
                                 </td>
                             </tr>
                         @empty
@@ -625,10 +659,12 @@
         {{-- 8) Utilization --}}
         <section class="mb-10">
             <h2 class="als-section-title mb-4 text-lg font-bold">Utilization Rate</h2>
-            <x-strategic.table-shell title="Utilization Rate" subtitle="Estimasi jam &amp; tingkat utilisasi" icon="table" fragment="strategic-ut-section" per-page-key="ut_per_page" :paginator="$utilizationRows">
-                <x-slot name="headerActions">
-                    <button type="button" class="strategic-crud-add inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100" data-strategic-kind="ut">+ Tambah</button>
-                </x-slot>
+            <x-strategic.table-shell title="Pemanfaatan Alat" subtitle="Seberapa sering setiap alat dipakai tiap harinya." icon="table" fragment="strategic-ut-section" per-page-key="ut_per_page" :paginator="$utilizationRows">
+                @if ($isAdmin)
+                    <x-slot name="headerActions">
+                        <button type="button" class="strategic-crud-add inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100" data-strategic-kind="ut">+ Tambah</button>
+                    </x-slot>
+                @endif
                 <x-slot name="toolbar">
                     <x-strategic.filter-toolbar :preserver-except="['ut_q', 'ut_status', 'ut_page']" :reset-keys="['ut_q', 'ut_status', 'ut_page', 'ut_per_page']" reset-fragment="strategic-ut-section">
                         <input type="search" name="ut_q" value="{{ request('ut_q') }}" placeholder="ID alat…" class="min-h-[38px] min-w-[6.5rem] max-w-full flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
@@ -679,14 +715,18 @@
                                     <x-strategic.badge :variant="$utilVariant($u->utilization_status)">{{ $utilLabel($u->utilization_status) }}</x-strategic.badge>
                                 </td>
                                 <td class="px-4 py-3 text-right" onclick="event.stopPropagation();">
-                                    <div class="inline-flex flex-wrap items-center justify-end gap-1.5">
-                                        <button type="button" class="strategic-crud-edit rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-100">Edit</button>
-                                        <form method="post" action="{{ route('strategic.utilization-daily.delete', $u).$strategicSuffix }}" class="inline als-strategic-delete-form">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="button" class="als-strategic-delete-btn rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-100">Hapus</button>
-                                        </form>
-                                    </div>
+                                    @if ($isAdmin)
+                                        <div class="inline-flex flex-wrap items-center justify-end gap-1.5">
+                                            <button type="button" class="strategic-crud-edit rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-100">Edit</button>
+                                            <form method="post" action="{{ route('strategic.utilization-daily.delete', $u).$strategicSuffix }}" class="inline als-strategic-delete-form">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="button" class="als-strategic-delete-btn rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-100">Hapus</button>
+                                            </form>
+                                        </div>
+                                    @else
+                                        <span class="text-xs text-slate-400">—</span>
+                                    @endif
                                 </td>
                             </tr>
                         @empty
@@ -701,10 +741,12 @@
         <section class="mb-10 space-y-8">
             <h2 class="als-section-title text-lg font-bold">Maintenance &amp; Health Record</h2>
 
-            <x-strategic.table-shell title="Predictive Maintenance Alert" subtitle="Interval &amp; jam kerja mesin" icon="alert" fragment="strategic-mp-section" per-page-key="mp_per_page" :paginator="$maintenancePlans">
-                <x-slot name="headerActions">
-                    <button type="button" class="strategic-crud-add inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100" data-strategic-kind="mp">+ Tambah</button>
-                </x-slot>
+            <x-strategic.table-shell title="Pengingat Servis Alat" subtitle="Jadwal perawatan rutin agar alat selalu siap pakai." icon="alert" fragment="strategic-mp-section" per-page-key="mp_per_page" :paginator="$maintenancePlans">
+                @if ($isAdmin)
+                    <x-slot name="headerActions">
+                        <button type="button" class="strategic-crud-add inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100" data-strategic-kind="mp">+ Tambah</button>
+                    </x-slot>
+                @endif
                 <x-slot name="toolbar">
                     <x-strategic.filter-toolbar :preserver-except="['mp_q', 'mp_status', 'mp_page']" :reset-keys="['mp_q', 'mp_status', 'mp_page', 'mp_per_page']" reset-fragment="strategic-mp-section">
                         <input type="search" name="mp_q" value="{{ request('mp_q') }}" placeholder="Alat / task…" class="min-h-[38px] min-w-[7rem] max-w-full flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
@@ -752,12 +794,16 @@
                                 <td class="px-4 py-3"><x-strategic.badge :variant="$mpVariant($m->status)">{{ strtoupper($m->status) }}</x-strategic.badge></td>
                                 <td class="px-4 py-3 text-right" onclick="event.stopPropagation();">
                                     <div class="inline-flex flex-wrap items-center justify-end gap-1.5">
+@if ($isAdmin)
                                         <button type="button" class="strategic-crud-edit rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-100">Edit</button>
                                         <form method="post" action="{{ route('strategic.maintenance-plans.delete', $m).$strategicSuffix }}" class="inline als-strategic-delete-form">
                                             @csrf
                                             @method('DELETE')
                                             <button type="button" class="als-strategic-delete-btn rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-100">Hapus</button>
                                         </form>
+                                        @else
+                                        <span class="text-xs text-slate-400">—</span>
+                                        @endif
                                     </div>
                                 </td>
                             </tr>
@@ -768,10 +814,12 @@
                 </table>
             </x-strategic.table-shell>
 
-            <x-strategic.table-shell title="Digital Health Record (Kartu Riwayat)" subtitle="Biaya &amp; teknisi" icon="table" fragment="strategic-mr-section" per-page-key="mr_per_page" :paginator="$maintenanceRecords">
-                <x-slot name="headerActions">
-                    <button type="button" class="strategic-crud-add inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100" data-strategic-kind="mr">+ Tambah</button>
-                </x-slot>
+            <x-strategic.table-shell title="Riwayat Kesehatan Alat" subtitle="Catatan perawatan &amp; perbaikan lengkap per alat." icon="table" fragment="strategic-mr-section" per-page-key="mr_per_page" :paginator="$maintenanceRecords">
+                @if ($isAdmin)
+                    <x-slot name="headerActions">
+                        <button type="button" class="strategic-crud-add inline-flex h-8 shrink-0 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100" data-strategic-kind="mr">+ Tambah</button>
+                    </x-slot>
+                @endif
                 <x-slot name="toolbar">
                     <x-strategic.filter-toolbar :preserver-except="['mr_q', 'mr_type', 'mr_page']" :reset-keys="['mr_q', 'mr_type', 'mr_page', 'mr_per_page']" reset-fragment="strategic-mr-section">
                         <input type="search" name="mr_q" value="{{ request('mr_q') }}" placeholder="Cari…" class="min-h-[38px] min-w-[6.5rem] max-w-full flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
@@ -815,14 +863,18 @@
                                 <td class="px-4 py-3 tabular-nums font-medium">Rp {{ number_format((float) $r->cost, 0, ',', '.') }}</td>
                                 <td class="px-4 py-3">{{ $r->technician ?: '—' }}</td>
                                 <td class="px-4 py-3 text-right" onclick="event.stopPropagation();">
-                                    <div class="inline-flex flex-wrap items-center justify-end gap-1.5">
-                                        <button type="button" class="strategic-crud-edit rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-100">Edit</button>
-                                        <form method="post" action="{{ route('strategic.maintenance-records.delete', $r).$strategicSuffix }}" class="inline als-strategic-delete-form">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button type="button" class="als-strategic-delete-btn rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-100">Hapus</button>
-                                        </form>
-                                    </div>
+                                    @if ($isAdmin)
+                                        <div class="inline-flex flex-wrap items-center justify-end gap-1.5">
+                                            <button type="button" class="strategic-crud-edit rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-900 hover:bg-amber-100">Edit</button>
+                                            <form method="post" action="{{ route('strategic.maintenance-records.delete', $r).$strategicSuffix }}" class="inline als-strategic-delete-form">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button type="button" class="als-strategic-delete-btn rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-800 hover:bg-rose-100">Hapus</button>
+                                            </form>
+                                        </div>
+                                    @else
+                                        <span class="text-xs text-slate-400">—</span>
+                                    @endif
                                 </td>
                             </tr>
                         @empty
@@ -1834,12 +1886,16 @@
                 });
             }
 
-            document.getElementById('als-zone-draw-work').addEventListener('click', function () {
-                resetAddZoneForm();
-                requestAnimationFrame(function () {
-                    openAddModal();
+            /* Tombol ada hanya untuk admin — guard agar halaman operator tidak error. */
+            var drawWorkBtn = document.getElementById('als-zone-draw-work');
+            if (drawWorkBtn) {
+                drawWorkBtn.addEventListener('click', function () {
+                    resetAddZoneForm();
+                    requestAnimationFrame(function () {
+                        openAddModal();
+                    });
                 });
-            });
+            }
             var addFormEl = document.getElementById('als-zone-add-form');
             if (addFormEl) {
                 addFormEl.addEventListener('submit', function (e) {
@@ -1981,6 +2037,41 @@
                 return String(v);
             }
 
+            /**
+             * Hitung total & grade rapor kinerja: harus identik dengan kalkulasi di controller
+             * (rata-rata Keaktifan & Perawatan; grade ketat A≥90 … E<60).
+             */
+            function strategicGpDerive() {
+                var actEl = document.getElementById('strategic-gp-act');
+                var mntEl = document.getElementById('strategic-gp-maint');
+                var totalOut = document.getElementById('strategic-gp-total-preview');
+                var gradeOut = document.getElementById('strategic-gp-grade-preview');
+                if (!totalOut || !gradeOut) return;
+                var a = actEl && actEl.value !== '' ? parseFloat(actEl.value) : NaN;
+                var m = mntEl && mntEl.value !== '' ? parseFloat(mntEl.value) : NaN;
+                if (!isFinite(a) || !isFinite(m)) {
+                    totalOut.textContent = '—';
+                    gradeOut.textContent = '—';
+                    return;
+                }
+                a = Math.max(0, Math.min(100, a));
+                m = Math.max(0, Math.min(100, m));
+                var total = Math.round(((a + m) / 2) * 100) / 100;
+                var grade = total >= 90 ? 'A' : total >= 80 ? 'B' : total >= 70 ? 'C' : total >= 60 ? 'D' : 'E';
+                totalOut.textContent = total.toFixed(2);
+                gradeOut.textContent = grade;
+            }
+
+            (function bindStrategicGpDerive() {
+                ['strategic-gp-act', 'strategic-gp-maint'].forEach(function (id) {
+                    var el = document.getElementById(id);
+                    if (el && !el.dataset.gpDeriveBound) {
+                        el.addEventListener('input', strategicGpDerive);
+                        el.dataset.gpDeriveBound = '1';
+                    }
+                });
+            })();
+
             function strategicOpenGp(mode, d) {
                 var form = document.getElementById('strategic-form-gp');
                 var m = document.getElementById('strategic-form-gp-method');
@@ -2000,10 +2091,9 @@
                     document.getElementById('strategic-gp-period').value = d.period || '';
                     document.getElementById('strategic-gp-act').value = strategicNumStr(d.activity_score);
                     document.getElementById('strategic-gp-maint').value = strategicNumStr(d.maintenance_score);
-                    document.getElementById('strategic-gp-total').value = strategicNumStr(d.total_score);
-                    document.getElementById('strategic-gp-grade').value = d.grade ? String(d.grade).toUpperCase() : '';
                     document.getElementById('strategic-gp-notes').value = d.notes || '';
                 }
+                strategicGpDerive();
                 var dlg = strategicDlg('gp');
                 if (dlg && dlg.showModal) dlg.showModal();
             }

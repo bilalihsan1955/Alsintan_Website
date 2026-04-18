@@ -12,14 +12,33 @@ class DatabaseSeeder extends Seeder
 
     /**
      * Seed the application's database.
+     *
+     * Akun demo (lokal saja — jangan pakai di produksi):
+     * - admin@alsintan.id    | password123 | role admin
+     * - operator@alsintan.id | password123 | role operator
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        $plain = 'password123';
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        User::query()->updateOrCreate(
+            ['email' => 'admin@alsintan.id'],
+            [
+                'name' => 'Admin Alsintan',
+                'password' => $plain,
+                'role' => 'admin',
+                'preferences' => ['theme_mode' => 'system', 'language' => 'id'],
+            ],
+        );
+
+        User::query()->updateOrCreate(
+            ['email' => 'operator@alsintan.id'],
+            [
+                'name' => 'Operator Demo',
+                'password' => $plain,
+                'role' => 'operator',
+                'preferences' => ['theme_mode' => 'system', 'language' => 'id'],
+            ],
+        );
     }
 }

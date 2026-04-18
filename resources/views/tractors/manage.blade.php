@@ -23,6 +23,9 @@
 <body class="min-h-full bg-slate-50 text-slate-900 antialiased">
     @include('partials.alsintan-nav', ['active' => 'tractors'])
 
+    @php
+        $isAdmin = auth()->check() && (auth()->user()->role ?? 'operator') === 'admin';
+    @endphp
     <div class="als-page-content mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         <header class="mb-8">
             <p class="text-sm font-medium text-emerald-700">Perangkat</p>
@@ -92,25 +95,34 @@
                                     </dl>
                                 </div>
                                 <div class="flex w-full flex-col gap-3 sm:flex-row sm:items-end lg:w-auto lg:min-w-[320px]">
-                                    <form method="post" action="{{ route('tractors.update', $t) }}" class="flex flex-1 flex-col gap-2 sm:flex-row sm:items-end">
-                                        @csrf
-                                        @method('PATCH')
-                                        <div class="min-w-0 flex-1">
-                                            <label for="name-{{ $t->id }}" class="mb-1 block text-xs font-medium text-slate-500">Nama tampilan</label>
-                                            <input type="text" id="name-{{ $t->id }}" name="name" value="{{ old('name', $t->name) }}"
-                                                placeholder="Contoh: Traktor Ladang A"
-                                                class="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+                                    @if ($isAdmin)
+                                        <form method="post" action="{{ route('tractors.update', $t) }}" class="flex flex-1 flex-col gap-2 sm:flex-row sm:items-end">
+                                            @csrf
+                                            @method('PATCH')
+                                            <div class="min-w-0 flex-1">
+                                                <label for="name-{{ $t->id }}" class="mb-1 block text-xs font-medium text-slate-500">Nama tampilan</label>
+                                                <input type="text" id="name-{{ $t->id }}" name="name" value="{{ old('name', $t->name) }}"
+                                                    placeholder="Contoh: Traktor Ladang A"
+                                                    class="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+                                            </div>
+                                            <div class="min-w-0 flex-1">
+                                                <label for="plate-{{ $t->id }}" class="mb-1 block text-xs font-medium text-slate-500">Plat</label>
+                                                <input type="text" id="plate-{{ $t->id }}" name="plate_number" value="{{ old('plate_number', $t->plate_number) }}"
+                                                    placeholder="Contoh: AB-1001-TK"
+                                                    class="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+                                            </div>
+                                            <button type="submit" class="shrink-0 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">
+                                                Simpan
+                                            </button>
+                                        </form>
+                                    @else
+                                        <div class="flex flex-1 flex-col gap-1">
+                                            <dt class="text-xs font-medium text-slate-500">Nama</dt>
+                                            <dd class="text-sm font-semibold text-slate-900">{{ $t->name ?: '—' }}</dd>
+                                            <dt class="mt-1 text-xs font-medium text-slate-500">Plat</dt>
+                                            <dd class="font-mono text-xs text-slate-700">{{ $t->plate_number ?: '—' }}</dd>
                                         </div>
-                                        <div class="min-w-0 flex-1">
-                                            <label for="plate-{{ $t->id }}" class="mb-1 block text-xs font-medium text-slate-500">Plat</label>
-                                            <input type="text" id="plate-{{ $t->id }}" name="plate_number" value="{{ old('plate_number', $t->plate_number) }}"
-                                                placeholder="Contoh: AB-1001-TK"
-                                                class="w-full rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
-                                        </div>
-                                        <button type="submit" class="shrink-0 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">
-                                            Simpan
-                                        </button>
-                                    </form>
+                                    @endif
                                     <a href="{{ route('dashboard', ['tractor' => $t->id]) }}"
                                         class="inline-flex shrink-0 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-900 hover:bg-emerald-100">
                                         Monitor

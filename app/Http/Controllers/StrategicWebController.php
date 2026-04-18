@@ -106,6 +106,29 @@ class StrategicWebController extends Controller
         return redirect()->route('strategic', $request->query());
     }
 
+    /**
+     * Hitung turunan rapor kinerja: total_score = rata-rata (activity + maintenance),
+     * grade berdasarkan ambang ketat (A≥90, B 80–89, C 70–79, D 60–69, E<60).
+     * Sumber nilai tunggal di server agar konsisten dengan tampilan UI (read-only).
+     *
+     * @return array{total_score: float, grade: string}
+     */
+    private function computeGroupScoreDerived(float $activity, float $maintenance): array
+    {
+        $activity = max(0.0, min(100.0, $activity));
+        $maintenance = max(0.0, min(100.0, $maintenance));
+        $total = round(($activity + $maintenance) / 2, 2);
+        $grade = match (true) {
+            $total >= 90 => 'A',
+            $total >= 80 => 'B',
+            $total >= 70 => 'C',
+            $total >= 60 => 'D',
+            default => 'E',
+        };
+
+        return ['total_score' => $total, 'grade' => $grade];
+    }
+
     public function storeGroupScore(Request $request)
     {
         $data = $request->validate([
@@ -115,13 +138,11 @@ class StrategicWebController extends Controller
                 Rule::unique('group_performance_scores', 'group_id')->where(fn ($q) => $q->where('period', $request->input('period'))),
             ],
             'period' => ['required', 'string', 'max:32'],
-            'activity_score' => ['required', 'numeric'],
-            'maintenance_score' => ['required', 'numeric'],
-            'total_score' => ['required', 'numeric'],
-            'grade' => ['nullable', 'string', 'size:1', Rule::in(['A', 'B', 'C', 'D', 'a', 'b', 'c', 'd'])],
+            'activity_score' => ['required', 'numeric', 'min:0', 'max:100'],
+            'maintenance_score' => ['required', 'numeric', 'min:0', 'max:100'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
-        $data['grade'] = $data['grade'] !== null && $data['grade'] !== '' ? strtoupper($data['grade']) : null;
+        $data += $this->computeGroupScoreDerived((float) $data['activity_score'], (float) $data['maintenance_score']);
         GroupPerformanceScore::query()->create($data);
 
         return $this->redirectStrategic($request)->with('ok', 'Rapor kinerja kelompok tani berhasil ditambahkan.');
@@ -138,13 +159,11 @@ class StrategicWebController extends Controller
                     ->ignore($groupPerformanceScore->id),
             ],
             'period' => ['required', 'string', 'max:32'],
-            'activity_score' => ['required', 'numeric'],
-            'maintenance_score' => ['required', 'numeric'],
-            'total_score' => ['required', 'numeric'],
-            'grade' => ['nullable', 'string', 'size:1', Rule::in(['A', 'B', 'C', 'D', 'a', 'b', 'c', 'd'])],
+            'activity_score' => ['required', 'numeric', 'min:0', 'max:100'],
+            'maintenance_score' => ['required', 'numeric', 'min:0', 'max:100'],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
-        $data['grade'] = $data['grade'] !== null && $data['grade'] !== '' ? strtoupper($data['grade']) : null;
+        $data += $this->computeGroupScoreDerived((float) $data['activity_score'], (float) $data['maintenance_score']);
         $groupPerformanceScore->update($data);
 
         return $this->redirectStrategic($request)->with('ok', 'Rapor kinerja kelompok tani diperbarui.');

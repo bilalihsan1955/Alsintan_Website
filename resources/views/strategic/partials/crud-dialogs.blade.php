@@ -33,20 +33,28 @@
                 <label class="font-medium text-slate-700">Periode</label>
                 <input type="text" name="period" id="strategic-gp-period" required maxlength="32" class="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 font-mono text-sm" placeholder="2026-Q2">
             </div>
-            <div class="grid grid-cols-3 gap-2">
-                <div><label class="text-slate-700">Keaktifan</label><input type="number" step="0.01" name="activity_score" id="strategic-gp-act" required class="mt-0.5 w-full rounded border border-slate-200 px-1 py-1 text-sm"></div>
-                <div><label class="text-slate-700">Perawatan</label><input type="number" step="0.01" name="maintenance_score" id="strategic-gp-maint" required class="mt-0.5 w-full rounded border border-slate-200 px-1 py-1 text-sm"></div>
-                <div><label class="text-slate-700">Total</label><input type="number" step="0.01" name="total_score" id="strategic-gp-total" required class="mt-0.5 w-full rounded border border-slate-200 px-1 py-1 text-sm"></div>
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="text-slate-700">Keaktifan</label>
+                    <input type="number" step="0.01" min="0" max="100" name="activity_score" id="strategic-gp-act" required class="mt-0.5 w-full rounded border border-slate-200 px-1 py-1 text-sm">
+                </div>
+                <div>
+                    <label class="text-slate-700">Perawatan</label>
+                    <input type="number" step="0.01" min="0" max="100" name="maintenance_score" id="strategic-gp-maint" required class="mt-0.5 w-full rounded border border-slate-200 px-1 py-1 text-sm">
+                </div>
             </div>
-            <div>
-                <label class="font-medium text-slate-700">Grade</label>
-                <select name="grade" id="strategic-gp-grade" class="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm">
-                    <option value="">—</option>
-                    @foreach (['A','B','C','D'] as $g)
-                        <option value="{{ $g }}">{{ $g }}</option>
-                    @endforeach
-                </select>
+            {{-- Preview total & grade: dihitung otomatis (server & klien). Nilai ini tidak dikirim ke server. --}}
+            <div class="grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-slate-50/80 p-2">
+                <div>
+                    <label class="text-slate-600">Total (otomatis)</label>
+                    <div id="strategic-gp-total-preview" class="mt-0.5 rounded border border-slate-200 bg-white px-2 py-1 text-sm font-semibold text-slate-800 tabular-nums">—</div>
+                </div>
+                <div>
+                    <label class="text-slate-600">Grade (otomatis)</label>
+                    <div id="strategic-gp-grade-preview" class="mt-0.5 rounded border border-slate-200 bg-white px-2 py-1 text-sm font-semibold text-slate-800">—</div>
+                </div>
             </div>
+            <p class="text-[11px] leading-snug text-slate-500">Total = rata-rata Keaktifan &amp; Perawatan. Grade: A ≥ 90 · B 80–89 · C 70–79 · D 60–69 · E &lt; 60.</p>
             <div>
                 <label class="font-medium text-slate-700">Catatan</label>
                 <textarea name="notes" id="strategic-gp-notes" rows="2" maxlength="2000" class="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 text-sm"></textarea>
