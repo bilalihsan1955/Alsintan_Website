@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\CoverageDaily;
 use App\Models\FuelEfficiencyDaily;
 use App\Models\KpiDaily;
+use App\Models\MaintenanceRecord;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 
@@ -15,6 +16,11 @@ class StrategicKpiService
      */
     public function overview(Carbon $from, Carbon $to): array
     {
+        /** Total biaya perbaikan = jumlah kolom `cost` (BIAYA di UI) pada riwayat servis, periode sama filter tanggal strategic. */
+        $repairFromRecords = (float) MaintenanceRecord::query()
+            ->whereBetween('record_date', [$from->toDateString(), $to->toDateString()])
+            ->sum('cost');
+
         $rows = KpiDaily::query()
             ->whereBetween('date', [$from->toDateString(), $to->toDateString()])
             ->orderBy('date')
@@ -27,7 +33,7 @@ class StrategicKpiService
                 'total_fuel_l' => 0,
                 'avg_score' => 0,
                 'open_anomalies' => 0,
-                'repair_cost_total' => 0,
+                'repair_cost_total' => $repairFromRecords,
                 'impact' => [
                     'summary_text' => 'Belum ada ringkasan dampak untuk periode ini.',
                     'fuel_saving_pct' => 0,
@@ -40,7 +46,6 @@ class StrategicKpiService
         $last = $rows->last();
         $avgScore = (float) $rows->avg('avg_score');
         $totalFuel = (float) $rows->sum('total_fuel_l');
-        $repair = (float) $rows->sum('repair_cost_total');
 
         return [
             'total_tractors' => (int) ($last->total_tractors ?? 0),
@@ -48,7 +53,7 @@ class StrategicKpiService
             'total_fuel_l' => $totalFuel,
             'avg_score' => $avgScore,
             'open_anomalies' => (int) ($last->open_anomalies ?? 0),
-            'repair_cost_total' => $repair,
+            'repair_cost_total' => $repairFromRecords,
             'impact' => [
                 'summary_text' => 'Ringkasan periode ini menunjukkan pemantauan lebih cepat, anomali lebih terdeteksi, dan efisiensi operasional meningkat.',
                 'fuel_saving_pct' => 0.0,
@@ -61,10 +66,14 @@ class StrategicKpiService
     /**
      * @return Collection<int, array{date:string, hectare_covered: float, cumulative: float}>
      */
-    public function coverageSeries(Carbon $from, Carbon $to): Collection
+    public function coverageSeries(Carbon $from, Carbon $to, ?string $tractorId = null): Collection
     {
         $rows = CoverageDaily::query()
-            ->whereNull('tractor_id')
+            ->when(
+                $tractorId !== null && $tractorId !== '',
+                fn ($q) => $q->where('tractor_id', (string) $tractorId),
+                fn ($q) => $q->whereNull('tractor_id'),
+            )
             ->whereBetween('date', [$from->toDateString(), $to->toDateString()])
             ->orderBy('date')
             ->get();
@@ -84,10 +93,14 @@ class StrategicKpiService
     /**
      * @return Collection<int, array{date:string, fuel_used_l: float, efficiency_value: float}>
      */
-    public function fuelEfficiencySeries(Carbon $from, Carbon $to): Collection
+    public function fuelEfficiencySeries(Carbon $from, Carbon $to, ?string $tractorId = null): Collection
     {
         return FuelEfficiencyDaily::query()
-            ->whereNull('tractor_id')
+            ->when(
+                $tractorId !== null && $tractorId !== '',
+                fn ($q) => $q->where('tractor_id', (string) $tractorId),
+                fn ($q) => $q->whereNull('tractor_id'),
+            )
             ->whereBetween('date', [$from->toDateString(), $to->toDateString()])
             ->orderBy('date')
             ->get()

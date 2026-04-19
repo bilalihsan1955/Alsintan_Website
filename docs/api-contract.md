@@ -2,6 +2,16 @@
 
 Kontrak API yang dipakai bersama Flutter (mobile), ESP32/RPi (IoT), dan web admin Laravel.
 
+## Dokumentasi mobile
+
+- **Peta OSM mobile** (pelacakan traktor: REST + WebSocket + `telemetry_logs`): [`README-LENGKAP-MOBILE-UNIT-PETA-GPS.md`](./README-LENGKAP-MOBILE-UNIT-PETA-GPS.md)
+- Indeks folder mobile: [`api/mobile/README.md`](./api/mobile/README.md)
+
+`api-contract.md` memuat **aturan umum** (auth, error, tabel endpoint ringkas). **`docs/flutter-api.md`**: ringkasan + contoh Dart.
+
+- OpenAPI (Auth, Me, Telemetry): `docs/openapi.yaml`
+- OpenAPI (traktor, zona, KPI): `docs/api/mobile/openapi.yaml`
+
 ## Base URL & versi
 
 - Development: `http://localhost:8000/api/v1`
@@ -13,7 +23,7 @@ Semua endpoint memakai prefix `/api/v1`. Jangan panggil versi tanpa prefix — v
 
 | Konsumen | Mekanisme | Header |
 | --- | --- | --- |
-| Flutter (user) | **JWT** bearer (HS256) dari `POST /auth/login` | `Authorization: Bearer {access_token}` |
+| Flutter (user) | **JWT** bearer (HS256); access JWT ada di dalam **`data.token`** (envelope Base64) | `Authorization: Bearer {access}` |
 | Web admin (Blade) | Session (CSRF) — rute `/` Laravel | — |
 | ESP32 / RPi (device) | API token per-traktor | `X-Device-Token: {plain_token}` |
 
@@ -95,36 +105,52 @@ Content-Type: application/json
 
 { "email": "demo@alsintan.id", "password": "password123", "device_name": "Pixel 8 — Flutter" }
 ```
-Response `200`:
+Response `200` — hanya **`data.user`** dan satu string **`data.token`** (tidak ada `access_token` / `tokens` terpisah di JSON):
+
 ```json
 {
-  "access_token": "eyJ0eXAiOi...",
-  "token_type": "Bearer",
-  "expires_in": 900,
-  "refresh_token": "rt_...",
-  "refresh_expires_in": 2592000,
-  "user": {
-    "id": 2, "name": "Demo Admin", "email": "demo@alsintan.id", "phone": null,
-    "avatar_url": null, "role": "admin",
-    "preferences": { "theme_mode": "system", "language": "id" },
-    "email_verified_at": null, "created_at": "2026-04-18T10:00:00+07:00"
+  "data": {
+    "user": {
+      "id": 2,
+      "name": "Demo Admin",
+      "email": "demo@alsintan.id",
+      "phone": null,
+      "avatar_url": null,
+      "role": "admin",
+      "preferences": { "theme_mode": "system", "language": "id" },
+      "email_verified_at": null,
+      "created_at": "2026-04-18T10:00:00+07:00"
+    },
+    "token": "PHN0cmluZyBCYXNlNjQgZGFyaSBKU09OIGludGVybmFsPi4uLg=="
   }
 }
 ```
+
+**`data.token`:** nilai Base64 dari JSON UTF-8 dengan kunci:
+
+| Kunci | Arti |
+| --- | --- |
+| `access` | JWT access (untuk header `Authorization: Bearer …`) |
+| `refresh` | Refresh token plaintext (`rt_…`) untuk `POST /auth/refresh` |
+| `token_type` | Biasanya `Bearer` |
+| `access_expires_in` | TTL access (detik) |
+| `refresh_expires_in` | TTL refresh (detik) |
+
+Spesifikasi lengkap & contoh decode: [`docs/auth-token-envelope.md`](./auth-token-envelope.md).
 
 #### Refresh
 ```http
 POST /api/v1/auth/refresh
 { "refresh_token": "rt_..." }
 ```
-Response = sama strukturnya dengan login. Token refresh lama otomatis revoked.
+Response `200` = **struktur sama** seperti login (`data.user` + `data.token` ter-envelope). Token refresh lama otomatis di-revoke.
 
 #### Forgot/Reset password
 ```http
 POST /api/v1/auth/forgot-password
 { "email": "demo@alsintan.id" }
 ```
-Server **selalu** membalas `200` (anti email enumeration). Jika email terdaftar, OTP 6 digit dikirim ke email.
+Server **selalu** membalas `200` (anti email enumeration). Jika email terdaftar, OTP 6 digit dikirim ke email. Body sukses: `{ "data": { "message": "...", "otp_ttl_seconds": 900 } }`.
 
 ```http
 POST /api/v1/auth/reset-password
@@ -135,11 +161,13 @@ POST /api/v1/auth/reset-password
   "password_confirmation": "passwordBaru!9"
 }
 ```
-Setelah reset, **semua refresh token user dicabut** (logout di semua device).
+Sukses: **`data.user` + `data.token`** (envelope sesi baru) + `data.message` — refresh lama dicabut; klien menyimpan `access`/`refresh` hasil decode tanpa wajib login ulang.
+
+**Logout** sukses: `{ "data": { "message": "Logout berhasil" } }`.
 
 ### 2. Profil (Me)
 
-Semua butuh `Authorization: Bearer {access_token}`.
+Semua butuh `Authorization: Bearer {access}` (nilai `access` hasil decode envelope `data.token` setelah login/refresh).
 
 | Method | Path | Deskripsi |
 | --- | --- | --- |
@@ -147,7 +175,7 @@ Semua butuh `Authorization: Bearer {access_token}`.
 | PATCH | `/me` | Update `name`, `phone` |
 | POST | `/me/avatar` | Upload avatar (multipart, field `avatar`, max 2MB) |
 | DELETE | `/me/avatar` | Hapus avatar |
-| PATCH | `/me/password` | Ganti password (butuh `current_password`) |
+| PATCH | `/me/password` | Ganti password (butuh `current_password`); respons = envelope sesi baru (`data.user` + `data.token` + `data.message`) |
 | GET | `/me/preferences` | Ambil preferensi |
 | PUT | `/me/preferences` | Simpan preferensi (`theme_mode`, `language`, `extras`) |
 
@@ -180,8 +208,10 @@ Catatan theme:
 | GET | `/utilization` | Utilisasi harian |
 | GET | `/maintenance/plans` | Rencana perawatan |
 | GET | `/maintenance/records` | Riwayat perawatan |
-| GET | `/tractors/latest-positions` | Posisi terkini semua traktor |
+| GET | `/tractors/latest-positions` | Daftar unit + posisi terkini (suhu, online/offline, dll.) |
+| GET | `/tractors/{id}/location` | Ringkasan satu traktor + zona kerja terkait |
 | GET | `/tractors/{id}/route-history` | Riwayat rute satu traktor |
+| GET | `/work-zones` | Zona / area kerja (polygon untuk peta) |
 
 > **TODO (product-owner):** tegaskan kebijakan per-role. Saat ini operator masih bisa akses semua read endpoint; admin-only action perlu policy (lihat `TODO role enforcement`).
 

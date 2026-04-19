@@ -3,8 +3,9 @@ info:
   title: Alsintan API
   version: "1.0.0"
   description: |
-    Kontrak API untuk mobile (Flutter), web admin, dan device IoT (ESP32/RPi).
-    Lihat docs/api-contract.md untuk penjelasan lengkap keputusan produk.
+    Spesifikasi mesin: **Auth**, **Me**, **Telemetry (device)**.
+    Path traktor, zona kerja, KPI: **`docs/api/mobile/openapi.yaml`**.
+    Pelacakan traktor di peta OSM (mobile): **`docs/README-LENGKAP-MOBILE-UNIT-PETA-GPS.md`**. Ringkas kontrak: `docs/api-contract.md`.
 
 servers:
   - url: http://localhost:8000/api/v1
@@ -18,11 +19,6 @@ servers:
 tags:
   - name: Auth
   - name: Me
-  - name: Strategic
-  - name: Alerts
-  - name: Utilization
-  - name: Maintenance
-  - name: Tractors
   - name: Telemetry
 
 components:
@@ -58,16 +54,46 @@ components:
         language: { type: string, enum: [id, en], example: id }
       additionalProperties: true
 
-    TokenPair:
+    AuthSession:
       type: object
-      required: [access_token, refresh_token, expires_in, token_type]
+      required: [data]
       properties:
-        access_token: { type: string, example: "eyJ0eXAi..." }
-        token_type: { type: string, example: Bearer }
-        expires_in: { type: integer, example: 900 }
-        refresh_token: { type: string, example: "rt_AbCd..." }
-        refresh_expires_in: { type: integer, example: 2592000 }
-        user: { $ref: '#/components/schemas/User' }
+        data:
+          type: object
+          required: [user, token]
+          properties:
+            user: { $ref: '#/components/schemas/User' }
+            token:
+              type: string
+              description: |
+                Base64 (standard) dari JSON UTF-8. Setelah decode, objek berisi:
+                `access` (JWT), `refresh` (string rt_*), `token_type` (mis. Bearer),
+                `access_expires_in`, `refresh_expires_in` (detik).
+              example: "eyJhY2Nlc3MiOi..."
+            message:
+              type: string
+              description: Opsional; disertakan setelah reset password atau PATCH /me/password.
+
+    AuthLogoutOk:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [message]
+          properties:
+            message: { type: string, example: "Logout berhasil" }
+
+    AuthForgotOk:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [message, otp_ttl_seconds]
+          properties:
+            message: { type: string }
+            otp_ttl_seconds: { type: integer, example: 900 }
 
     Error:
       type: object
@@ -130,7 +156,7 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/TokenPair' }
+              schema: { $ref: '#/components/schemas/AuthSession' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/Validation' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
@@ -153,7 +179,7 @@ paths:
           description: OK
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/TokenPair' }
+              schema: { $ref: '#/components/schemas/AuthSession' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   /auth/logout:
@@ -173,10 +199,7 @@ paths:
           description: OK
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
+              schema: { $ref: '#/components/schemas/AuthLogoutOk' }
 
   /auth/forgot-password:
     post:
@@ -196,11 +219,7 @@ paths:
           description: Selalu 200 untuk mencegah enumerasi email
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
-                  otp_ttl_seconds: { type: integer, example: 900 }
+              schema: { $ref: '#/components/schemas/AuthForgotOk' }
         '429': { $ref: '#/components/responses/TooManyRequests' }
 
   /auth/reset-password:
@@ -221,13 +240,10 @@ paths:
                 password_confirmation: { type: string, format: password }
       responses:
         '200':
-          description: OK
+          description: Sesi baru (sama bentuk login) + pesan di `data.message`
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
+              schema: { $ref: '#/components/schemas/AuthSession' }
         '422': { $ref: '#/components/responses/Validation' }
 
   /me:
@@ -327,13 +343,10 @@ paths:
                 password_confirmation: { type: string, format: password }
       responses:
         '200':
-          description: OK
+          description: Sesi baru (envelope) + `data.message`; semua refresh lama dicabut
           content:
             application/json:
-              schema:
-                type: object
-                properties:
-                  message: { type: string }
+              schema: { $ref: '#/components/schemas/AuthSession' }
         '422': { $ref: '#/components/responses/Validation' }
 
   /me/preferences:

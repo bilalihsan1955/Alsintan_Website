@@ -2,9 +2,11 @@
 
 Dokumen ini kontrak API yang dipakai aplikasi mobile (Flutter). Semua endpoint di bawah **sudah ter-implementasi di backend Laravel** dan siap dipakai tim Flutter.
 
+> **Pelacakan traktor di peta OSM (mobile):** [`README-LENGKAP-MOBILE-UNIT-PETA-GPS.md`](./README-LENGKAP-MOBILE-UNIT-PETA-GPS.md). **Strategic & indeks OpenAPI mobile:** [`api/mobile/README.md`](./api/mobile/README.md).
+
 - **Base URL dev**: `http://localhost:8000/api/v1`
 - **Base URL prod**: `https://<domain>/api/v1`
-- **Auth mobile**: JWT bearer (`Authorization: Bearer {access_token}`)
+- **Auth mobile**: JWT bearer (`Authorization: Bearer {access}` dari envelope — lihat §2 & [`auth-token-envelope.md`](./auth-token-envelope.md))
 - **Format semua response**: JSON UTF-8. Error memakai skema konsisten (lihat §4).
 - **Timezone**: timestamp dikirim dalam ISO-8601 UTC (`Z`). Konversi ke lokal di klien.
 
@@ -45,12 +47,12 @@ Dokumen ini kontrak API yang dipakai aplikasi mobile (Flutter). Semua endpoint d
 
 ## 2) Alur auth (mobile)
 
-1. User isi email+password → `POST /auth/login` → dapat **access (15 m)** + **refresh (30 h)**.
-2. Simpan `access_token` di memory (atau secure storage, lihat §7).
-3. Tiap request berproteksi: set header `Authorization: Bearer {access}`.
-4. Jika dapat **401** → panggil `POST /auth/refresh` dengan `refresh_token`. Server mengembalikan pasangan token **baru**, refresh lama dicabut.
-5. Reuse refresh lama = otomatis **semua** refresh user dicabut (paksa login ulang di semua device).
-6. Logout = `POST /auth/logout` mengirim `refresh_token` untuk dicabut di server. Access tetap hidup hingga expired (klien buang saja).
+1. `POST /auth/login` → respons berisi **`data.user`** + **`data.token`** (satu string Base64). **Decode** `data.token` → JSON berisi `access`, `refresh`, `token_type`, `access_expires_in`, `refresh_expires_in` (lihat [`auth-token-envelope.md`](./auth-token-envelope.md)).
+2. Simpan **`access`** dan **`refresh`** hasil decode ke secure storage (§7).
+3. Tiap request: `Authorization: Bearer {access}`.
+4. **401** → `POST /auth/refresh` dengan body `{ "refresh_token": "<refresh>" }` → respons lagi `data.user` + `data.token`; decode dan **ganti** storage (refresh lama revoked).
+5. Reuse refresh yang sudah di-revoke → server dapat memaksa logout semua device.
+6. **Logout** → `POST /auth/logout` + Bearer + body `{ "refresh_token": "<refresh>" }`.
 
 ---
 
@@ -61,7 +63,8 @@ Request:
 ```json
 { "email": "admin@alsintan.id", "password": "rahasia123" }
 ```
-Response `200`:
+Response `200` — di `data` **hanya** `user` + **`token`** (satu string; tidak ada objek `tokens` / field `access_token` terpisah):
+
 ```json
 {
   "data": {
@@ -76,42 +79,44 @@ Response `200`:
       "email_verified_at": null,
       "created_at": "2026-04-18T02:11:45.000000Z"
     },
-    "tokens": {
-      "access_token": "eyJhbGciOi...",
-      "refresh_token": "rt_8f2c...",
-      "token_type": "Bearer",
-      "access_expires_in": 900,
-      "refresh_expires_in": 2592000
-    }
+    "token": "ZXlKaGJHY2lPaUpJVXpJMU5pSjkuLi4="
   }
 }
 ```
+
+Decode `data.token` (Base64 → JSON) untuk mendapat `access`, `refresh`, dll. — lihat [`auth-token-envelope.md`](./auth-token-envelope.md).
+
 Error: `422` (field salah), `401` (email/password salah), `429` (rate limit: 5/menit per email+IP).
 
 ### 3.2 `POST /auth/refresh`
 ```json
 { "refresh_token": "rt_8f2c..." }
 ```
-Response `200` = `tokens` baru (skema sama seperti login). Server menerbitkan refresh **baru** dan men-revoke yang lama.
+Response `200` = **sama seperti login**: `{ "data": { "user", "token" } }` dengan `token` envelope baru. Server menerbitkan refresh **baru** dan men-revoke yang lama.
 
 ### 3.3 `POST /auth/logout`
 Header `Authorization: Bearer {access}`. Body:
 ```json
 { "refresh_token": "rt_8f2c..." }
 ```
-Response `204`.
+Response `200`: `{ "data": { "message": "Logout berhasil" } }`.
 
 ### 3.4 `POST /auth/forgot-password`
 ```json
 { "email": "admin@alsintan.id" }
 ```
-Selalu `200` walau email tidak terdaftar (enumeration protection). Rate limit: 3/jam/email.
+Selalu `200` walau email tidak terdaftar (enumeration protection). Rate limit: 3/jam/email. Body sukses: `{ "data": { "message": "...", "otp_ttl_seconds": 900 } }`.
 
 ### 3.5 `POST /auth/reset-password`
 ```json
-{ "email": "admin@alsintan.id", "otp": "123456", "password": "passwordBaru1" }
+{
+  "email": "admin@alsintan.id",
+  "code": "123456",
+  "password": "passwordBaru1",
+  "password_confirmation": "passwordBaru1"
+}
 ```
-Sukses `204`. OTP 6 digit, TTL 15 menit, maks 5 percobaan. Setelah sukses, **semua** refresh token user lama dicabut.
+Field OTP di API bernama **`code`** (bukan `otp`). Sukses `200` = **sama seperti login**: `data.user` + `data.token` (envelope baru) + opsional `data.message` — decode `token` dan simpan `access`/`refresh` di klien (sesi baru, tidak wajib login ulang).
 
 ### 3.6 `GET /me`
 Return user object (skema sama dengan `user` pada login).
@@ -125,12 +130,14 @@ Kedua field optional. Return user object terbaru.
 ### 3.8 `POST /me/avatar` (multipart)
 Field: `avatar` (jpg/jpeg/png/webp, max 2 MB). Return user object.
 
-### 3.9 `DELETE /me/avatar` → `204`.
+### 3.9 `DELETE /me/avatar`
+Response `200` + `{ "data": { ...user } }` (profil terbaru tanpa avatar).
 
 ### 3.10 `PATCH /me/password`
 ```json
 { "current_password": "lama", "password": "baru8char", "password_confirmation": "baru8char" }
 ```
+Sukses `200` = **`data.user` + `data.token`** + `data.message` (semua refresh lama dicabut, sesi baru). Klien harus **mengganti** token tersimpan dari envelope yang baru (sama seperti setelah login).
 
 ### 3.11 `GET /me/preferences`
 ```json
@@ -150,7 +157,7 @@ Semua menerima query opsional `from=YYYY-MM-DD&to=YYYY-MM-DD` dan sebagian mener
 ```json
 { "data": [ ... ], "meta": { "current_page": 1, "per_page": 20, "total": 0, "last_page": 1 } }
 ```
-Field dalam `data[i]` mengikuti nama kolom yang sama dengan dashboard web. Gunakan Postman/Swagger (`docs/openapi.yaml`) untuk contoh payload.
+Field dalam `data[i]` mengikuti kontrak terbaru; untuk **peta OSM & lintasan** lihat [`README-LENGKAP-MOBILE-UNIT-PETA-GPS.md`](./README-LENGKAP-MOBILE-UNIT-PETA-GPS.md). Postman/Swagger: impor **`docs/openapi.yaml`** + **`docs/api/mobile/openapi.yaml`** (dua file).
 
 ---
 
@@ -223,6 +230,7 @@ curl -X POST http://localhost:8000/api/v1/me/avatar \
 ```dart
 // pubspec: dio: ^5.0.0, flutter_secure_storage: ^9.0.0
 
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -233,6 +241,19 @@ final dio = Dio(BaseOptions(
   receiveTimeout: const Duration(seconds: 15),
   headers: {'Accept': 'application/json'},
 ));
+
+/// Decode `data.token` (Base64 → JSON) dari login / refresh.
+Map<String, dynamic> parseAuthEnvelope(Map<String, dynamic> body) {
+  final b64 = body['data']['token'] as String;
+  final inner = utf8.decode(base64Decode(b64));
+  return json.decode(inner) as Map<String, dynamic>;
+}
+
+Future<void> persistFromEnvelope(Map<String, dynamic> body) async {
+  final env = parseAuthEnvelope(body);
+  await storage.write(key: 'access_token', value: env['access'] as String);
+  await storage.write(key: 'refresh_token', value: env['refresh'] as String);
+}
 
 Future<void> attachInterceptor() async {
   dio.interceptors.add(InterceptorsWrapper(
@@ -250,12 +271,11 @@ Future<void> attachInterceptor() async {
 
       try {
         final r = await dio.post('/auth/refresh', data: {'refresh_token': rt});
-        final tokens = r.data['data']['tokens'];
-        await storage.write(key: 'access_token', value: tokens['access_token']);
-        await storage.write(key: 'refresh_token', value: tokens['refresh_token']);
+        await persistFromEnvelope(Map<String, dynamic>.from(r.data as Map));
 
+        final env = parseAuthEnvelope(Map<String, dynamic>.from(r.data as Map));
         final retry = e.requestOptions;
-        retry.headers['Authorization'] = 'Bearer ${tokens['access_token']}';
+        retry.headers['Authorization'] = 'Bearer ${env['access']}';
         final resp = await dio.fetch(retry);
         return handler.resolve(resp);
       } catch (_) {
@@ -269,10 +289,8 @@ Future<void> attachInterceptor() async {
 // --- login ---
 Future<Map<String, dynamic>> login(String email, String password) async {
   final r = await dio.post('/auth/login', data: {'email': email, 'password': password});
-  final tokens = r.data['data']['tokens'];
-  await storage.write(key: 'access_token', value: tokens['access_token']);
-  await storage.write(key: 'refresh_token', value: tokens['refresh_token']);
-  return r.data['data']['user'];
+  await persistFromEnvelope(Map<String, dynamic>.from(r.data as Map));
+  return (r.data['data']['user'] as Map).cast<String, dynamic>();
 }
 
 // --- get profile ---
@@ -308,7 +326,7 @@ Future<void> logout() async {
 
 ## 7) Rekomendasi klien
 
-- **Secure storage**: simpan `access_token` & `refresh_token` di `flutter_secure_storage` (iOS Keychain / Android EncryptedSharedPreferences).
+- **Secure storage**: setelah decode envelope, simpan nilai `access` & `refresh` (boleh tetap pakai key internal `access_token` / `refresh_token`) di `flutter_secure_storage`.
 - **Refresh race**: gunakan singleton lock agar tidak dua request paralel sama-sama refresh.
 - **Base URL**: simpan di `.env` dart; emulator Android pakai `http://10.0.2.2:8000` untuk akses host `localhost`.
 - **Sinkron tema**:
@@ -321,7 +339,9 @@ Future<void> logout() async {
 
 ## 8) Referensi lain
 
-- OpenAPI YAML: [`docs/openapi.yaml`](./openapi.yaml) — bisa di-import ke Swagger UI / Postman untuk tes cepat.
+- **Spesifikasi envelope `data.token`:** [`docs/auth-token-envelope.md`](./auth-token-envelope.md)
+- OpenAPI YAML inti: [`docs/openapi.yaml`](./openapi.yaml) (Auth, Me, Telemetry).
+- OpenAPI mobile: [`docs/api/mobile/openapi.yaml`](./api/mobile/openapi.yaml) (traktor, zona, KPI).
 - Kontrak penuh (termasuk endpoint device IoT): [`docs/api-contract.md`](./api-contract.md).
 
 ---
@@ -331,3 +351,5 @@ Future<void> logout() async {
 | Tanggal | Versi | Catatan |
 | --- | --- | --- |
 | 2026-04-18 | v1.0.0 | Initial contract (auth JWT, /me, strategic read, alerts, telemetry ingest). |
+| 2026-04-18 | v1.1.0 | Login/refresh: satu field `data.token` (Base64 JSON); tidak ada `tokens` / `access_token` di root `data`. |
+| 2026-04-18 | v1.2.0 | Envelope juga untuk `PATCH /me/password` & `POST /auth/reset-password`; forgot/logout dibungkus `data`. |

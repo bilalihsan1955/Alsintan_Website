@@ -77,13 +77,21 @@ class DashboardController extends Controller
         $latestPayload = is_array($latestLog?->raw_payload) ? $latestLog->raw_payload : (json_decode((string) ($latestLog?->raw_payload ?? ''), true) ?: []);
         $flowValue = (float) ($latestLog?->fuel_lph ?? 0);
 
-        $gpsLogs = TelemetryLog::query()
+        /* N titik GPS terbaru (bukan titik paling lama), urut waktu naik — selaras API mobile & polyline ringkas. */
+        $gpsLimit = 800;
+        $gpsIds = TelemetryLog::query()
             ->where('tractor_id', $tractor->id)
             ->whereNotNull('lat')
             ->whereNotNull('lng')
-            ->orderBy('ts')
-            ->limit(800)
-            ->get(['lat', 'lng', 'ts']);
+            ->orderByDesc('ts')
+            ->limit($gpsLimit)
+            ->pluck('id');
+        $gpsLogs = $gpsIds->isEmpty()
+            ? collect()
+            : TelemetryLog::query()
+                ->whereIn('id', $gpsIds->all())
+                ->orderBy('ts')
+                ->get(['lat', 'lng', 'ts']);
 
         $tz = config('app.timezone');
         $trackPoints = $gpsLogs

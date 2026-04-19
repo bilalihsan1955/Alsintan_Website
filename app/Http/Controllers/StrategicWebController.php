@@ -432,13 +432,17 @@ class StrategicWebController extends Controller
             return response()->json(['ok' => false, 'message' => 'Traktor tidak ditemukan.'], 404);
         }
 
-        $query = TelemetryLog::query()
+        $base = TelemetryLog::query()
             ->where('tractor_id', $tractorId)
             ->whereNotNull('lat')
-            ->whereNotNull('lng')
-            ->orderBy('ts')
-            ->limit($limit)
-            ->get(['lat', 'lng', 'ts']);
+            ->whereNotNull('lng');
+        $ids = (clone $base)->orderByDesc('ts')->limit($limit)->pluck('id');
+        $query = $ids->isEmpty()
+            ? collect()
+            : TelemetryLog::query()
+                ->whereIn('id', $ids->all())
+                ->orderBy('ts')
+                ->get(['lat', 'lng', 'ts']);
 
         $track = $query->map(fn (TelemetryLog $g) => [
             'lat' => (float) $g->lat,
@@ -502,7 +506,7 @@ class StrategicWebController extends Controller
     }
 
     /**
-     * Jalur GPS per alat: sama logika dengan dashboard — titik berurutan menurut waktu, paling banyak 800 titik pertama.
+     * Jalur GPS per alat: sama logika dengan dashboard — **N titik terbaru** per traktor, urut waktu naik (polyline segmen terkini).
      *
      * @return array<string, list<array{lat: float, lng: float}>>
      */
@@ -512,13 +516,14 @@ class StrategicWebController extends Controller
             return [];
         }
 
+        /* Per traktor: ambil N titik terbaru (rn menurut ts desc), lalu urut ts naik untuk polyline. */
         $inner = TelemetryLog::query()
             ->select([
                 'tractor_id',
                 'lat',
                 'lng',
                 'ts',
-                DB::raw('row_number() over (partition by tractor_id order by ts asc) as rn'),
+                DB::raw('row_number() over (partition by tractor_id order by ts desc) as rn'),
             ])
             ->whereIn('tractor_id', $tractorIds)
             ->whereNotNull('lat')

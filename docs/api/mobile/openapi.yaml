@@ -1,0 +1,372 @@
+openapi: 3.0.3
+info:
+  title: Alsintan API — Mobile
+  version: "1.0.0"
+  description: |
+    Path & skema: traktor (latest-positions, location, route-history), work-zones, strategic KPI.
+    Peta OSM mobile (tracking): `docs/README-LENGKAP-MOBILE-UNIT-PETA-GPS.md`. Auth & Me & ingest: `docs/openapi.yaml`. Ringkas: `docs/api-contract.md`.
+
+servers:
+  - url: http://localhost:8000/api/v1
+    description: Development
+  - url: https://{host}/api/v1
+    description: Produksi
+    variables:
+      host:
+        default: alsintan.example.com
+
+tags:
+  - name: Strategic
+  - name: Tractors
+  - name: WorkZones
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      required: [message, code]
+      properties:
+        message: { type: string, example: "Token tidak valid atau kedaluwarsa" }
+        code: { type: string, example: unauthorized }
+
+    ValidationError:
+      allOf:
+        - $ref: '#/components/schemas/Error'
+        - type: object
+          properties:
+            errors:
+              type: object
+              additionalProperties:
+                type: array
+                items: { type: string }
+
+    TractorLatestPosition:
+      type: object
+      description: |
+        Ringkasan per unit (daftar unit / peta). Suhu dari `raw_payload.sensor.temperature` log telemetri terakhir.
+        `vibration` tetap diisi dari posisi terbaru untuk kompatibilitas grafik; UI kartu unit memakai `temperature_c`.
+      required:
+        [id, name, display_name, plate_number, lat, lng, speed_kmh, engine_hours, status, connection_status, last_update, temperature_c, vibration, is_engine_on, is_gps_on, route_history]
+      properties:
+        id: { type: string, example: "T-01" }
+        name: { type: string }
+        display_name: { type: string, description: Judul kartu (nama jika ada, else id) }
+        plate_number: { type: string }
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
+        speed_kmh: { type: number, format: double }
+        engine_hours: { type: number, format: double }
+        status:
+          type: string
+          enum: [active, idle, maintenance, offline]
+          description: Status operasional armada
+        connection_status:
+          type: string
+          enum: [online, offline]
+          description: Segarkan dari telemetri/posisi terbaru vs ambang stale (config)
+        last_update: { type: string, format: date-time, description: UTC ISO-8601 (posisi terbaru) }
+        temperature_c: { type: number, format: double, nullable: true, description: Suhu mesin °C; null jika sensor tidak ada }
+        vibration: { type: number, format: double, description: Getaran (g) dari snapshot posisi }
+        is_engine_on: { type: boolean }
+        is_gps_on: { type: boolean }
+        route_history:
+          type: array
+          description: Titik telemetri per node (satu elemen = satu lingkaran di peta web); urut waktu naik. Sama bentuk inti dengan route-history penuh tanpa filter tanggal.
+          items:
+            type: object
+            required: [lat, lng]
+            properties:
+              lat: { type: number, format: double }
+              lng: { type: number, format: double }
+              ts: { type: string, format: date-time, nullable: true, description: Waktu titik (UTC ISO-8601) }
+
+    TractorUnitDetail:
+      allOf:
+        - $ref: '#/components/schemas/TractorLatestPosition'
+        - type: object
+          required: [work_zones]
+          properties:
+            work_zones:
+              type: array
+              items: { $ref: '#/components/schemas/WorkZoneSummary' }
+
+    WorkZoneSummary:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        zone_type: { type: string }
+        is_active: { type: boolean }
+
+    WorkZone:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        zone_type: { type: string }
+        is_active: { type: boolean }
+        polygon:
+          type: array
+          description: Ring titik { lat, lng }
+          items:
+            type: object
+            properties:
+              lat: { type: number, format: double }
+              lng: { type: number, format: double }
+        tractor_ids:
+          type: array
+          items: { type: string }
+          description: Hanya jika pivot geofence_zone_tractor tersedia
+
+    RouteHistoryPoint:
+      type: object
+      required: [lat, lng, ts]
+      properties:
+        lat: { type: number, format: double }
+        lng: { type: number, format: double }
+        ts: { type: string, format: date-time }
+
+    StrategicKpiData:
+      type: object
+      required:
+        - total_alsintan
+        - total_data_log
+        - total_fuel_liters
+        - average_score
+        - anomalies_unresolved
+        - total_repair_cost_idr
+        - impact
+      properties:
+        total_alsintan: { type: integer }
+        total_data_log: { type: integer }
+        total_fuel_liters: { type: number, format: double }
+        average_score: { type: number, format: double }
+        anomalies_unresolved: { type: integer }
+        total_repair_cost_idr: { type: number, format: double }
+        impact:
+          type: object
+          required: [fuel_savings_percent, productivity_up_percent, downtime_down_percent]
+          properties:
+            fuel_savings_percent: { type: number, format: double }
+            productivity_up_percent: { type: number, format: double }
+            downtime_down_percent: { type: number, format: double }
+
+    ListPaginationMeta:
+      type: object
+      properties:
+        current_page: { type: integer }
+        per_page: { type: integer }
+        total: { type: integer }
+        last_page: { type: integer }
+
+  responses:
+    Unauthorized:
+      description: Token tidak valid
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Validation:
+      description: Data tidak valid
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ValidationError' }
+
+paths:
+  /tractors/latest-positions:
+    get:
+      tags: [Tractors]
+      summary: Posisi & telemetri terbaru per traktor (Home / Strategic map)
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string, enum: [active, idle, maintenance, offline] }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: per_page
+          schema: { type: integer, minimum: 1, maximum: 100, default: 15 }
+        - in: query
+          name: include_route_history
+          schema: { type: boolean, default: false }
+        - in: query
+          name: route_history_limit
+          schema: { type: integer, minimum: 2, maximum: 800, default: 30 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TractorLatestPosition' }
+                  meta:
+                    allOf:
+                      - $ref: '#/components/schemas/ListPaginationMeta'
+                      - type: object
+                        properties:
+                          active_count: { type: integer }
+                          idle_count: { type: integer }
+                          total_count: { type: integer }
+                          online_stale_minutes: { type: integer, description: Ambang menit untuk connection_status }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /tractors/{id}/location:
+    get:
+      tags: [Tractors]
+      summary: Lokasi & ringkasan satu traktor + zona kerja terkait
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: include_route_history
+          schema: { type: boolean, default: false }
+        - in: query
+          name: route_history_limit
+          schema: { type: integer, minimum: 2, maximum: 800, default: 30 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { $ref: '#/components/schemas/TractorUnitDetail' }
+                  meta:
+                    type: object
+                    properties:
+                      online_stale_minutes: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /work-zones:
+    get:
+      tags: [WorkZones]
+      summary: Daftar zona / area kerja (polygon untuk overlay peta)
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: query
+          name: active_only
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/WorkZone' }
+                  meta:
+                    type: object
+                    properties:
+                      count: { type: integer }
+                      active_only: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /tractors/{id}/route-history:
+    get:
+      tags: [Tractors]
+      summary: Riwayat titik GPS (telemetry_logs; segmen terbaru, sama konsep peta web)
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: from
+          description: Wajib berpasangan dengan `to` jika filter rentang dipakai
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+        - in: query
+          name: limit
+          description: Default 800, maks. 1200. Tanpa from/to = ambil **limit titik terakhir** (ts desc), diurut naik; dengan rentang = limit titik terakhir dalam rentang.
+          schema: { type: integer, minimum: 10, maximum: 1200, default: 800 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/RouteHistoryPoint' }
+                  meta:
+                    type: object
+                    properties:
+                      tractor_id: { type: string }
+                      source: { type: string, example: telemetry_logs }
+                      segment:
+                        type: string
+                        enum: [recent]
+                        description: Segmen waktu terbaru (bukan awal seluruh riwayat)
+                      from: { type: string, format: date, nullable: true }
+                      to: { type: string, format: date, nullable: true }
+                      count: { type: integer }
+                      limit: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/Validation' }
+
+  /strategic/kpi:
+    get:
+      tags: [Strategic]
+      summary: KPI agregat + metrik dampak (Strategic)
+      security: [ { bearerAuth: [] } ]
+      parameters:
+        - in: query
+          name: from
+          required: true
+          schema: { type: string, format: date }
+        - in: query
+          name: to
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [data, meta]
+                properties:
+                  data: { $ref: '#/components/schemas/StrategicKpiData' }
+                  meta:
+                    type: object
+                    properties:
+                      from: { type: string, format: date }
+                      to: { type: string, format: date }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/Validation' }

@@ -84,6 +84,12 @@ class TelemetryIngestService
                 'tractor_id' => $tractor->id,
                 'ts' => $ts->toIso8601String(),
                 'position' => ['lat' => (float) $payload['lat'], 'lng' => (float) $payload['lng']],
+                /* Satu titik = satu elemen identik dengan GET /tractors/{id}/route-history → data[] */
+                'node' => [
+                    'lat' => (float) $payload['lat'],
+                    'lng' => (float) $payload['lng'],
+                    'ts' => $ts->copy()->utc()->toIso8601String(),
+                ],
                 'speed_kmh' => isset($payload['speed_kmh']) ? (float) $payload['speed_kmh'] : null,
                 'engine_hours' => isset($payload['engine_hours']) ? (float) $payload['engine_hours'] : null,
                 'vibration_g' => isset($payload['vibration_g']) ? (float) $payload['vibration_g'] : null,

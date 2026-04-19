@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\JwtService;
+use App\Support\ApiAuthEnvelope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -16,6 +18,10 @@ use Illuminate\Validation\Rule;
  */
 class MeController extends Controller
 {
+    public function __construct(private readonly JwtService $jwt)
+    {
+    }
+
     /** GET /api/v1/me */
     public function show(Request $request): JsonResponse
     {
@@ -110,9 +116,20 @@ class MeController extends Controller
         $user->password = $data['password'];
         $user->save();
 
-        return response()->json([
+        /* Cabut semua refresh lalu terbitkan sesi baru (sama pola dengan reset password). */
+        $this->jwt->revokeAllForUser($user->getKey());
+
+        $fresh = $user->fresh();
+        $tokens = $this->jwt->issueTokens(
+            $fresh,
+            $request->header('X-Device-Name') ?: $request->userAgent(),
+            $request->ip(),
+            $request->userAgent(),
+        );
+
+        return response()->json(ApiAuthEnvelope::sessionPayload($fresh, $tokens, $request, [
             'message' => 'Password diperbarui',
-        ]);
+        ]));
     }
 
     /** GET /api/v1/me/preferences */

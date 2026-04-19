@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\MeController;
 use App\Http\Controllers\Api\StrategicController;
 use App\Http\Controllers\Api\TelemetryIngestController;
 use App\Http\Controllers\Api\TractorMapController;
+use App\Http\Controllers\Api\WorkZoneController;
 use App\Http\Controllers\Api\UtilizationController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -59,14 +60,17 @@ Route::prefix('v1')->group(function () {
         /* Alerts & anomaly. Resolve dibatasi admin (ditegakkan di controller/policy ke depan). */
         Route::get('/alerts/geofence', [AlertController::class, 'geofence']);
         Route::get('/alerts/anomalies', [AlertController::class, 'anomalies']);
-        Route::patch('/alerts/anomalies/{id}/resolve', [AlertController::class, 'resolveAnomaly']);
+        Route::patch('/alerts/anomalies/{id}/resolve', [AlertController::class, 'resolveAnomaly'])
+            ->middleware('admin');
 
         Route::get('/utilization', [UtilizationController::class, 'index']);
         Route::get('/maintenance/plans', [MaintenanceController::class, 'plans']);
         Route::get('/maintenance/records', [MaintenanceController::class, 'records']);
 
         Route::get('/tractors/latest-positions', [TractorMapController::class, 'latestPositions']);
+        Route::get('/tractors/{id}/location', [TractorMapController::class, 'showLocation']);
         Route::get('/tractors/{id}/route-history', [TractorMapController::class, 'routeHistory']);
+        Route::get('/work-zones', [WorkZoneController::class, 'index']);
     });
 
     /* Ingest telemetri dari device IoT. Pakai X-Device-Token per-traktor (bukan JWT user). */

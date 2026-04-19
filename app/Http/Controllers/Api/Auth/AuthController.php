@@ -3,17 +3,16 @@
 namespace App\Http\Controllers\Api\Auth;
 
 use App\Http\Controllers\Controller;
-use App\Http\Resources\UserResource;
 use App\Models\EmailOtp;
 use App\Models\User;
 use App\Services\JwtService;
+use App\Support\ApiAuthEnvelope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -63,9 +62,7 @@ class AuthController extends Controller
             $request->userAgent(),
         );
 
-        return response()->json(array_merge($tokens, [
-            'user' => (new UserResource($user))->toArray($request),
-        ]));
+        return response()->json(ApiAuthEnvelope::sessionPayload($user, $tokens, $request));
     }
 
     /**
@@ -87,9 +84,7 @@ class AuthController extends Controller
             ], 401);
         }
 
-        return response()->json(array_merge($result['tokens'], [
-            'user' => (new UserResource($result['user']))->toArray($request),
-        ]));
+        return response()->json(ApiAuthEnvelope::sessionPayload($result['user'], $result['tokens'], $request));
     }
 
     /**
@@ -108,7 +103,9 @@ class AuthController extends Controller
         }
 
         return response()->json([
-            'message' => 'Logout berhasil',
+            'data' => [
+                'message' => 'Logout berhasil',
+            ],
         ]);
     }
 
@@ -156,14 +153,17 @@ class AuthController extends Controller
         }
 
         return response()->json([
-            'message' => 'Jika email terdaftar, kami telah mengirim kode OTP ke email tersebut.',
-            'otp_ttl_seconds' => 15 * 60,
+            'data' => [
+                'message' => 'Jika email terdaftar, kami telah mengirim kode OTP ke email tersebut.',
+                'otp_ttl_seconds' => 15 * 60,
+            ],
         ]);
     }
 
     /**
      * POST /api/v1/auth/reset-password
      * Body: email, code (6 digit), password (baru).
+     * Sukses: sesi baru (envelope) + pesan — tidak perlu login ulang di mobile.
      */
     public function resetPassword(Request $request): JsonResponse
     {
@@ -218,11 +218,18 @@ class AuthController extends Controller
         $user->password = $data['password'];
         $user->save();
 
-        /* Keamanan: paksa logout semua device setelah reset password. */
         $this->jwt->revokeAllForUser($user->getKey());
 
-        return response()->json([
-            'message' => 'Password berhasil direset. Silakan login kembali.',
-        ]);
+        $userFresh = $user->fresh();
+        $tokens = $this->jwt->issueTokens(
+            $userFresh,
+            $request->userAgent(),
+            $request->ip(),
+            $request->userAgent(),
+        );
+
+        return response()->json(ApiAuthEnvelope::sessionPayload($userFresh, $tokens, $request, [
+            'message' => 'Password berhasil direset. Sesi baru aktif.',
+        ]));
     }
 }
