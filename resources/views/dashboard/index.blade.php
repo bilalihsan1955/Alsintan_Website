@@ -191,26 +191,32 @@
                             <h2 class="text-base font-semibold text-slate-900">Riwayat sensor mesin</h2>
                             <p class="mt-1 text-xs text-slate-500">Tabel ini berisi riwayat pembacaan telemetri per waktu; gunakan filter untuk mempercepat penelusuran.</p>
                         </div>
-                        <form id="history-filter-form" method="get" action="{{ route('dashboard') }}" class="min-w-0">
+                        @php
+                            $histDateCtrl = 'min-h-[38px] w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20';
+                        @endphp
+                        <form id="history-filter-form" method="get" action="{{ route('dashboard') }}" class="min-w-0 w-full">
                             <input type="hidden" name="tractor" value="{{ $tractor->id }}">
-                            <div class="flex flex-nowrap items-end gap-2 overflow-x-auto pb-0.5 [scrollbar-width:thin]">
-                                <label class="flex w-[9.5rem] flex-shrink-0 flex-col gap-0.5 text-xs font-medium text-slate-600">
+                            {{-- Sama pola dengan x-strategic.filter-toolbar: filter mengisi tengah, Tombol Terapkan/Reset ml-auto tanpa celah kosong --}}
+                            <div class="flex flex-wrap items-end gap-2 lg:flex-nowrap lg:overflow-x-auto lg:pb-0.5 lg:[scrollbar-width:thin]">
+                                <label class="flex w-[calc(50%-0.25rem)] flex-col gap-0.5 text-xs font-medium text-slate-600 sm:w-[9.5rem] sm:flex-shrink-0">
                                     <span>Dari tanggal</span>
-                                    <input type="date" name="hist_from" value="{{ request('hist_from') }}" class="min-h-[38px] w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+                                    <input type="date" name="hist_from" value="{{ request('hist_from') }}" class="{{ $histDateCtrl }}">
                                 </label>
-                                <label class="flex w-[9.5rem] flex-shrink-0 flex-col gap-0.5 text-xs font-medium text-slate-600">
+                                <label class="flex w-[calc(50%-0.25rem)] flex-col gap-0.5 text-xs font-medium text-slate-600 sm:w-[9.5rem] sm:flex-shrink-0">
                                     <span>Sampai tanggal</span>
-                                    <input type="date" name="hist_to" value="{{ request('hist_to') }}" class="min-h-[38px] w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+                                    <input type="date" name="hist_to" value="{{ request('hist_to') }}" class="{{ $histDateCtrl }}">
                                 </label>
-                                <label class="flex min-w-[10rem] max-w-md flex-1 flex-col gap-0.5 text-xs font-medium text-slate-600">
-                                    <span>Cari</span>
-                                    <input type="text" name="hist_q" value="{{ request('hist_q') }}" placeholder="status / payload" class="min-h-[38px] w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
-                                </label>
-                                <label class="flex w-[7.5rem] flex-shrink-0 flex-col gap-0.5 text-xs font-medium text-slate-600">
-                                    <span>Urutkan</span>
-                                    <x-ui.custom-select name="hist_order" :options="['desc' => 'Terkini', 'asc' => 'Awal']" :selected="request('hist_order') === 'asc' ? 'asc' : 'desc'" class="w-full" />
-                                </label>
-                                <div class="flex flex-shrink-0 gap-2">
+                                <div class="flex w-full min-w-0 flex-wrap items-end gap-2 lg:w-auto lg:flex-1 lg:flex-nowrap">
+                                    <label class="flex min-w-[10rem] flex-1 flex-col gap-0.5 text-xs font-medium text-slate-600">
+                                        <span>Cari</span>
+                                        <input type="text" name="hist_q" value="{{ request('hist_q') }}" placeholder="status / payload" class="min-h-[38px] w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20">
+                                    </label>
+                                    <label class="flex w-full min-w-[7.5rem] max-w-[9rem] flex-shrink-0 flex-col gap-0.5 text-xs font-medium text-slate-600 sm:w-[7.5rem]">
+                                        <span>Urutkan</span>
+                                        <x-ui.custom-select name="hist_order" :options="['desc' => 'Terkini', 'asc' => 'Awal']" :selected="request('hist_order') === 'asc' ? 'asc' : 'desc'" class="w-full" />
+                                    </label>
+                                </div>
+                                <div class="ml-auto flex shrink-0 gap-2">
                                     <button type="submit" class="inline-flex min-h-[38px] items-center justify-center whitespace-nowrap rounded-lg bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2">Terapkan</button>
                                     <a href="{{ route('dashboard', ['tractor' => $tractor->id]) }}" class="inline-flex min-h-[38px] items-center justify-center whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">Reset</a>
                                 </div>
